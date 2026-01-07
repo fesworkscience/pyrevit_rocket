@@ -1,0 +1,161 @@
+{
+  "Uuid": "d4e5f6a7-b8c9-0123-def0-456789abcdef",
+  "IsCustomNode": false,
+  "Description": "Exports all KM_AUTO_ prefixed sheets to PDF files",
+  "Name": "export_to_pdf",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "# Dynamo Script for Revit 2025 - Export KM Sheets to PDF\n# Exports all sheets with KM_AUTO_ prefix to PDF files\n# Shows folder selection dialog and opens folder after export\n\nimport clr\nimport os\nimport subprocess\n\ntry:\n    clr.AddReference('RevitAPI')\n    clr.AddReference('RevitAPIUI')\n    clr.AddReference('RevitServices')\n    clr.AddReference('RevitNodes')\n    clr.AddReference('System.Windows.Forms')\n    \n    from RevitServices.Persistence import DocumentManager\n    from RevitServices.Transactions import TransactionManager\n    \n    from Autodesk.Revit.DB import FilteredElementCollector, ViewSheet\n    from Autodesk.Revit.DB import PDFExportOptions, ExportPaperFormat\n    from Autodesk.Revit.DB import ElementId\n    from Autodesk.Revit.UI import TaskDialog\n    \n    from System.Collections.Generic import List\n    from System.Windows.Forms import FolderBrowserDialog, DialogResult\n    \n    # Configuration\n    PREFIX = \"KM_AUTO_\"\n    \n    doc = DocumentManager.Instance.CurrentDBDocument\n    \n    def get_prefixed_sheets():\n        \"\"\"Get all sheets with KM_AUTO_ prefix\"\"\"\n        sheets = []\n        collector = FilteredElementCollector(doc).OfClass(ViewSheet).ToElements()\n        for sheet in collector:\n            try:\n                name = sheet.Name\n                num = sheet.SheetNumber\n                if name.startswith(PREFIX) or num.startswith(PREFIX):\n                    sheets.append(sheet)\n            except:\n                pass\n        return sheets\n    \n    def select_output_folder():\n        \"\"\"Show folder selection dialog\"\"\"\n        # Get default path (Revit file folder or Desktop)\n        default_path = os.path.expanduser(\"~\")\n        try:\n            doc_path = doc.PathName\n            if doc_path:\n                default_path = os.path.dirname(doc_path)\n        except:\n            pass\n        \n        dialog = FolderBrowserDialog()\n        dialog.Description = \"Select folder to save PDF files\"\n        dialog.SelectedPath = default_path\n        dialog.ShowNewFolderButton = True\n        \n        if dialog.ShowDialog() == DialogResult.OK:\n            return dialog.SelectedPath\n        return None\n    \n    def open_folder(folder_path):\n        \"\"\"Open folder in Windows Explorer\"\"\"\n        try:\n            os.startfile(folder_path)\n        except:\n            try:\n                subprocess.Popen(['explorer', folder_path])\n            except:\n                pass\n    \n    def export_sheets_to_pdf(sheets, output_folder):\n        \"\"\"Export all sheets to single combined PDF\"\"\"\n        errors = []\n        output_file = \"KM_Documentation.pdf\"\n        \n        try:\n            # Sort sheets by number\n            sorted_sheets = sorted(sheets, key=lambda s: s.SheetNumber)\n            \n            # Collect all sheet IDs\n            view_ids = List[ElementId]()\n            for sheet in sorted_sheets:\n                view_ids.Add(sheet.Id)\n            \n            # Create PDF export options\n            pdf_options = PDFExportOptions()\n            pdf_options.PaperFormat = ExportPaperFormat.Default\n            pdf_options.Combine = True\n            pdf_options.FileName = \"KM_Documentation\"\n            \n            # Export all sheets at once\n            result = doc.Export(output_folder, view_ids, pdf_options)\n            \n            if result:\n                return [output_file], errors, len(sorted_sheets)\n            else:\n                errors.append(\"Export failed\")\n                return [], errors, 0\n                \n        except Exception as ex:\n            errors.append(\"Export error: \" + str(ex))\n            return [], errors, 0\n    \n    # Main execution\n    sheets = get_prefixed_sheets()\n    \n    if len(sheets) == 0:\n        result_text = \"No sheets with prefix '\" + PREFIX + \"' found!\\n\\nRun create_km_documentation.dyn first.\"\n        TaskDialog.Show(\"PDF Export\", result_text)\n        OUT = result_text\n    else:\n        # Show folder selection dialog\n        output_folder = select_output_folder()\n        \n        if output_folder is None:\n            result_text = \"Export cancelled - no folder selected.\"\n            TaskDialog.Show(\"PDF Export\", result_text)\n            OUT = result_text\n        else:\n            TransactionManager.Instance.EnsureInTransaction(doc)\n            exported, errors, sheet_count = export_sheets_to_pdf(sheets, output_folder)\n            TransactionManager.Instance.TransactionTaskDone()\n            \n            # Build result message\n            lines = []\n            if len(exported) > 0:\n                lines.append(\"PDF EXPORT COMPLETE\")\n                lines.append(\"\")\n                lines.append(\"File: \" + exported[0])\n                lines.append(\"Folder: \" + output_folder)\n                lines.append(\"\")\n                lines.append(\"Sheets in PDF: \" + str(sheet_count))\n            else:\n                lines.append(\"PDF EXPORT FAILED\")\n            \n            if len(errors) > 0:\n                lines.append(\"\")\n                lines.append(\"Errors:\")\n                for e in errors:\n                    lines.append(\"  \" + e)\n            \n            result_text = \"\\n\".join(lines)\n            TaskDialog.Show(\"PDF Export\", result_text)\n            \n            # Open folder in Explorer\n            if len(exported) > 0:\n                open_folder(output_folder)\n            \n            OUT = result_text\n\nexcept Exception as e:\n    import traceback\n    error_msg = \"ERROR: \" + str(e) + \"\\n\" + traceback.format_exc()\n    try:\n        TaskDialog.Show(\"PDF Export Error\", error_msg)\n    except:\n        pass\n    OUT = error_msg\n",
+      "Engine": "CPython3",
+      "EngineName": "CPython3",
+      "VariableInputPorts": true,
+      "NodeType": "PythonScriptNode",
+      "Id": "python_export",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "output_0",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs Python script with CPython3 engine"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "NodeType": "ExtensionNode",
+      "Id": "watch_output",
+      "Inputs": [
+        {
+          "Id": "input_0",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "output_1",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualize the output"
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "output_0",
+      "End": "input_0",
+      "Id": "connector_0"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "Properties",
+      "Version": "3.0",
+      "Data": {}
+    }
+  ],
+  "Author": "Dynamo Script Generator",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "3.0.0.0",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Background Preview",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "NodeViews": [
+      {
+        "Id": "python_export",
+        "Name": "Export to PDF",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 250.0,
+        "Y": 300.0
+      },
+      {
+        "Id": "watch_output",
+        "Name": "Watch Result",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 650.0,
+        "Y": 300.0
+      }
+    ],
+    "Annotations": [
+      {
+        "Id": "annotation_1",
+        "Title": "Export KM Sheets to PDF",
+        "DescriptionText": "Exports all KM_AUTO_ sheets to single PDF file.\n\n1. Shows folder selection dialog\n2. Combines all sheets into KM_Documentation.pdf\n3. Opens folder in Explorer after export\n\nRun create_km_documentation.dyn first!",
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": ["python_export"],
+        "HasNestedGroups": false,
+        "Left": 240.0,
+        "Top": 200.0,
+        "Width": 300.0,
+        "Height": 250.0,
+        "FontSize": 14.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": 230.0,
+        "InitialHeight": 200.0,
+        "TextblockHeight": 20.0,
+        "Background": "#FFFFC107"
+      }
+    ],
+    "X": 0.0,
+    "Y": 0.0,
+    "Zoom": 1.0
+  }
+}

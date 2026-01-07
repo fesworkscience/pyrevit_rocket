@@ -1,0 +1,163 @@
+{
+  "Uuid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "IsCustomNode": false,
+  "Description": "Get viewport coordinates",
+  "Name": "get_viewport_coords",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "import clr\nclr.AddReference('RevitAPI')\nclr.AddReference('RevitAPIUI')\nclr.AddReference('RevitServices')\n\nfrom RevitServices.Persistence import DocumentManager\nfrom Autodesk.Revit.DB import FilteredElementCollector, Viewport, BuiltInCategory, FamilyInstance\n\nclr.AddReference('System.Windows.Forms')\nclr.AddReference('System.Drawing')\nfrom System.Windows.Forms import Form, TextBox, ScrollBars, DockStyle\nfrom System.Drawing import Size, Font\n\ndef show_dialog(title, text):\n    form = Form()\n    form.Text = title\n    form.Size = Size(700, 500)\n    form.StartPosition = 4\n    textbox = TextBox()\n    textbox.Multiline = True\n    textbox.ScrollBars = ScrollBars.Both\n    textbox.Dock = DockStyle.Fill\n    textbox.Font = Font(\"Consolas\", 10)\n    textbox.Text = text\n    textbox.ReadOnly = True\n    form.Controls.Add(textbox)\n    form.ShowDialog()\n\ndoc = DocumentManager.Instance.CurrentDBDocument\nuidoc = DocumentManager.Instance.CurrentUIApplication.ActiveUIDocument\n\nresult = []\nresult.append(\"=== SELECTED ELEMENT INFO ===\")\nresult.append(\"\")\n\nselection = list(uidoc.Selection.GetElementIds())\n\nif len(selection) == 0:\n    result.append(\"No elements selected!\")\n    result.append(\"\")\n    result.append(\"Select either:\")\n    result.append(\"  - A VIEWPORT to get its position\")\n    result.append(\"  - The TITLE BLOCK to get frame bounds\")\nelse:\n    for elem_id in selection:\n        elem = doc.GetElement(elem_id)\n        elem_type = str(type(elem).__name__)\n        result.append(\"Element Type: \" + elem_type)\n        result.append(\"Element ID: \" + str(elem_id.IntegerValue))\n        result.append(\"\")\n        \n        # Get active view (sheet)\n        active_view = uidoc.ActiveView\n        \n        if isinstance(elem, Viewport):\n            result.append(\"=== VIEWPORT ===\")\n            center = elem.GetBoxCenter()\n            result.append(\"Center: (\" + str(round(center.X * 304.8)) + \", \" + str(round(center.Y * 304.8)) + \") mm\")\n            \n            outline = elem.GetBoxOutline()\n            if outline:\n                result.append(\"Box Min: (\" + str(round(outline.MinimumPoint.X * 304.8)) + \", \" + str(round(outline.MinimumPoint.Y * 304.8)) + \") mm\")\n                result.append(\"Box Max: (\" + str(round(outline.MaximumPoint.X * 304.8)) + \", \" + str(round(outline.MaximumPoint.Y * 304.8)) + \") mm\")\n        \n        elif isinstance(elem, FamilyInstance):\n            # Check if it's a title block\n            cat = elem.Category\n            if cat and cat.Id.IntegerValue == int(BuiltInCategory.OST_TitleBlocks):\n                result.append(\"=== TITLE BLOCK ===\")\n                \n                # Get bounding box\n                bb = elem.get_BoundingBox(active_view)\n                if bb:\n                    min_x = round(bb.Min.X * 304.8)\n                    min_y = round(bb.Min.Y * 304.8)\n                    max_x = round(bb.Max.X * 304.8)\n                    max_y = round(bb.Max.Y * 304.8)\n                    width = max_x - min_x\n                    height = max_y - min_y\n                    \n                    result.append(\"BBox Min: (\" + str(min_x) + \", \" + str(min_y) + \") mm\")\n                    result.append(\"BBox Max: (\" + str(max_x) + \", \" + str(max_y) + \") mm\")\n                    result.append(\"Size: \" + str(width) + \" x \" + str(height) + \" mm\")\n                    result.append(\"\")\n                    \n                    # Calculate workable area (GOST margins)\n                    margin_left = 20\n                    margin_right = 5\n                    margin_top = 5\n                    margin_bottom = 55\n                    \n                    work_left = min_x + margin_left\n                    work_right = max_x - margin_right\n                    work_bottom = min_y + margin_bottom\n                    work_top = max_y - margin_top\n                    work_w = work_right - work_left\n                    work_h = work_top - work_bottom\n                    \n                    result.append(\"=== WORKABLE AREA (with GOST margins) ===\")\n                    result.append(\"Left: \" + str(work_left) + \" mm\")\n                    result.append(\"Right: \" + str(work_right) + \" mm\")\n                    result.append(\"Bottom: \" + str(work_bottom) + \" mm\")\n                    result.append(\"Top: \" + str(work_top) + \" mm\")\n                    result.append(\"Size: \" + str(work_w) + \" x \" + str(work_h) + \" mm\")\n                    result.append(\"\")\n                    \n                    # Calculate 2x2 grid positions for views\n                    views_w = work_w * 0.65\n                    cell_w = views_w / 2\n                    cell_h = work_h / 2\n                    \n                    result.append(\"=== SUGGESTED VIEWPORT POSITIONS ===\")\n                    result.append(\"Cell size: \" + str(round(cell_w)) + \" x \" + str(round(cell_h)) + \" mm\")\n                    result.append(\"\")\n                    \n                    # Top-left (PLAN)\n                    plan_x = work_left + cell_w * 0.5\n                    plan_y = work_top - cell_h * 0.5\n                    result.append(\"PLAN (top-left): (\" + str(round(plan_x)) + \", \" + str(round(plan_y)) + \") mm\")\n                    \n                    # Top-right (SECTION 1)\n                    sec1_x = work_left + cell_w * 1.5\n                    sec1_y = work_top - cell_h * 0.5\n                    result.append(\"SECTION 1 (top-right): (\" + str(round(sec1_x)) + \", \" + str(round(sec1_y)) + \") mm\")\n                    \n                    # Bottom-left (SECTION 2)\n                    sec2_x = work_left + cell_w * 0.5\n                    sec2_y = work_bottom + cell_h * 0.5\n                    result.append(\"SECTION 2 (bottom-left): (\" + str(round(sec2_x)) + \", \" + str(round(sec2_y)) + \") mm\")\n                    \n                    # Bottom-right (3D)\n                    v3d_x = work_left + cell_w * 1.5\n                    v3d_y = work_bottom + cell_h * 0.5\n                    result.append(\"3D VIEW (bottom-right): (\" + str(round(v3d_x)) + \", \" + str(round(v3d_y)) + \") mm\")\n                    \n                    # Schedule (right side)\n                    sched_x = work_left + views_w + (work_w - views_w) * 0.5\n                    sched_y = work_bottom + work_h * 0.6\n                    result.append(\"SCHEDULE (right): (\" + str(round(sched_x)) + \", \" + str(round(sched_y)) + \") mm\")\n                else:\n                    result.append(\"Could not get bounding box\")\n            else:\n                result.append(\"FamilyInstance but not a title block\")\n                result.append(\"Category: \" + str(cat.Name if cat else \"None\"))\n        else:\n            result.append(\"Unknown element type\")\n            result.append(\"Please select a Viewport or Title Block\")\n\ntext = chr(10).join(result)\nshow_dialog(\"Element Info\", text)\nOUT = text\n",
+      "Engine": "CPython3",
+      "EngineName": "CPython3",
+      "VariableInputPorts": true,
+      "NodeType": "PythonScriptNode",
+      "Id": "python_main",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "output_0",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs Python script with CPython3 engine"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "NodeType": "ExtensionNode",
+      "Id": "watch_output",
+      "Inputs": [
+        {
+          "Id": "input_0",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "output_1",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualize the output"
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "output_0",
+      "End": "input_0",
+      "Id": "connector_0"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "Properties",
+      "Version": "3.0",
+      "Data": {}
+    }
+  ],
+  "Author": "Dynamo Script Generator",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "3.0.0.0",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Background Preview",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "NodeViews": [
+      {
+        "Id": "python_main",
+        "Name": "KM Documentation Generator",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 250.0,
+        "Y": 300.0
+      },
+      {
+        "Id": "watch_output",
+        "Name": "Watch Result",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 650.0,
+        "Y": 300.0
+      }
+    ],
+    "Annotations": [
+      {
+        "Id": "annotation_1",
+        "Title": "KM Documentation Generator",
+        "DescriptionText": "KM Documentation Generator (Loader)\n\nMain logic is in: km_documentation_logic.py\n\nEdit the .py file directly in any IDE!\nChanges take effect on next run (no need to edit .dyn).\n\nCreates:\n- Title sheet (with title block)\n- 4 building elevation views (N, S, E, W)\n- Sheets for each unique TYPE SIZE with:\n  - Plan view\n  - Section views (X and Y)\n  - 3D view\n  - Schedule (filtered by type!)",
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [
+          "python_main"
+        ],
+        "HasNestedGroups": false,
+        "Left": 240.0,
+        "Top": 200.0,
+        "Width": 300.0,
+        "Height": 250.0,
+        "FontSize": 14.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": 230.0,
+        "InitialHeight": 200.0,
+        "TextblockHeight": 20.0,
+        "Background": "#FFC1D676"
+      }
+    ],
+    "X": 0.0,
+    "Y": 0.0,
+    "Zoom": 1.0
+  }
+}

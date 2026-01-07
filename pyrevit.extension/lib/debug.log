@@ -1,0 +1,21 @@
+=== IDS Checker Log ===
+validate_ids: START
+  ids_path: C:\Users\feduloves\Documents\web\rhino_cpsk\pyrevit.extension\lib\1.ids
+  ifc_path: C:\Users\feduloves\Desktop\rhino_khz_R25_fix_map.ifc
+  report_path: C:\Users\feduloves\Desktop\rhino_khz_R25_fix_map_ids_report_CPSK.html
+fix_entity_restrictions: START
+fix_entity_restrictions: DONE, fixed 19 entities
+validate_ids: Running specs.validate()
+Spec #10 (Фундаменты):
+  status: False
+  applicable_entities: 36
+  Req #0 Номер корпуса: False
+  Req #1 Номер секции: True
+  Req #2 Позиция: False
+  Req #3 Обозначение: False
+  Req #4 Наименование: False
+validate_ids_standard: START (without fixes)
+validate_ids_standard: IDS loaded, 21 specs
+validate_ids_standard: IFC loaded
+validate_ids_standard: Validation done
+validate_ids_standard: Standard HTML report saved to C:\Users\feduloves\Desktop\rhino_khz_R25_fix_map_ids_report_STANDARD.html

@@ -1,0 +1,161 @@
+{
+  "Uuid": "f1e2d3c4-b5a6-7890-abcd-123456789012",
+  "IsCustomNode": false,
+  "Description": "Lists all available title blocks in the project",
+  "Name": "list_title_blocks",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "# List all title blocks in project\n\nimport clr\n\ntry:\n    clr.AddReference('RevitAPI')\n    clr.AddReference('RevitAPIUI')\n    clr.AddReference('RevitServices')\n    clr.AddReference('RevitNodes')\n    \n    from RevitServices.Persistence import DocumentManager\n    from Autodesk.Revit.DB import FilteredElementCollector, BuiltInCategory, FamilySymbol, BuiltInParameter, Element\n    from Autodesk.Revit.UI import TaskDialog\n    \n    import Revit\n    clr.ImportExtensions(Revit.Elements)\n    \n    doc = DocumentManager.Instance.CurrentDBDocument\n    \n    def get_element_name(elem):\n        \"\"\"Try multiple ways to get element name\"\"\"\n        # Method 1: Direct Name property\n        try:\n            n = elem.Name\n            if n:\n                return n\n        except:\n            pass\n        \n        # Method 2: SYMBOL_NAME_PARAM\n        try:\n            p = elem.get_Parameter(BuiltInParameter.SYMBOL_NAME_PARAM)\n            if p and p.HasValue:\n                return p.AsString()\n        except:\n            pass\n        \n        # Method 3: ALL_MODEL_TYPE_NAME\n        try:\n            p = elem.get_Parameter(BuiltInParameter.ALL_MODEL_TYPE_NAME)\n            if p and p.HasValue:\n                return p.AsString()\n        except:\n            pass\n        \n        # Method 4: Element.Name.GetValue\n        try:\n            return Element.Name.GetValue(elem)\n        except:\n            pass\n        \n        # Method 5: LookupParameter\n        try:\n            p = elem.LookupParameter(\"Type Name\")\n            if p and p.HasValue:\n                return p.AsString()\n        except:\n            pass\n        \n        try:\n            p = elem.LookupParameter(\"Имя типа\")\n            if p and p.HasValue:\n                return p.AsString()\n        except:\n            pass\n        \n        return None\n    \n    lines = []\n    lines.append(\"ALL TITLE BLOCKS IN PROJECT:\")\n    lines.append(\"=\"*50)\n    lines.append(\"\")\n    \n    collector = FilteredElementCollector(doc).OfCategory(BuiltInCategory.OST_TitleBlocks).OfClass(FamilySymbol)\n    \n    title_blocks = []\n    for tb in collector:\n        try:\n            family_name = \"\"\n            type_name = \"\"\n            is_active = False\n            \n            try:\n                family_name = tb.Family.Name if tb.Family else \"[no family]\"\n            except:\n                family_name = \"[error reading family]\"\n            \n            type_name = get_element_name(tb)\n            if not type_name:\n                type_name = \"[ID:\" + str(tb.Id.IntegerValue) + \"]\"\n            \n            try:\n                is_active = tb.IsActive\n            except:\n                pass\n            \n            title_blocks.append({\n                'family': family_name,\n                'type': type_name,\n                'active': is_active,\n                'id': tb.Id.IntegerValue\n            })\n        except Exception as ex:\n            lines.append(\"Error reading title block: \" + str(ex))\n    \n    lines.append(\"Found \" + str(len(title_blocks)) + \" title block types:\")\n    lines.append(\"\")\n    \n    # Group by family\n    families = {}\n    for tb in title_blocks:\n        fam = tb['family']\n        if fam not in families:\n            families[fam] = []\n        families[fam].append(tb)\n    \n    for fam_name in sorted(families.keys()):\n        lines.append(\"FAMILY: \" + fam_name)\n        for tb in families[fam_name]:\n            active_mark = \" [ACTIVE]\" if tb['active'] else \"\"\n            lines.append(\"  TYPE: \" + tb['type'] + active_mark)\n            lines.append(\"    ID: \" + str(tb['id']))\n        lines.append(\"\")\n    \n    lines.append(\"=\"*50)\n    lines.append(\"\")\n    lines.append(\"To use a title block, update TITLE_BLOCK_FAMILY and TITLE_BLOCK_TYPE\")\n    lines.append(\"in create_km_documentation.dyn with exact names from above.\")\n    \n    result_text = \"\\n\".join(lines)\n    TaskDialog.Show(\"Title Blocks\", result_text)\n    OUT = result_text\n\nexcept Exception as e:\n    import traceback\n    error_msg = \"ERROR: \" + str(e) + \"\\n\" + traceback.format_exc()\n    TaskDialog.Show(\"Error\", error_msg)\n    OUT = error_msg\n",
+      "Engine": "CPython3",
+      "EngineName": "CPython3",
+      "VariableInputPorts": true,
+      "NodeType": "PythonScriptNode",
+      "Id": "python_list",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "output_0",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs Python script with CPython3 engine"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "NodeType": "ExtensionNode",
+      "Id": "watch_output",
+      "Inputs": [
+        {
+          "Id": "input_0",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "output_1",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualize the output"
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "output_0",
+      "End": "input_0",
+      "Id": "connector_0"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "Properties",
+      "Version": "3.0",
+      "Data": {}
+    }
+  ],
+  "Author": "Dynamo Script Generator",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "3.0.0.0",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Background Preview",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "NodeViews": [
+      {
+        "Id": "python_list",
+        "Name": "List Title Blocks",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 250.0,
+        "Y": 300.0
+      },
+      {
+        "Id": "watch_output",
+        "Name": "Watch Result",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 650.0,
+        "Y": 300.0
+      }
+    ],
+    "Annotations": [
+      {
+        "Id": "annotation_1",
+        "Title": "List All Title Blocks",
+        "DescriptionText": "Lists all title block families and types available in the project.\n\nUse this to find the correct names for TITLE_BLOCK_FAMILY and TITLE_BLOCK_TYPE.",
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": ["python_list"],
+        "HasNestedGroups": false,
+        "Left": 240.0,
+        "Top": 200.0,
+        "Width": 300.0,
+        "Height": 250.0,
+        "FontSize": 14.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": 230.0,
+        "InitialHeight": 200.0,
+        "TextblockHeight": 20.0,
+        "Background": "#FFBB8FCE"
+      }
+    ],
+    "X": 0.0,
+    "Y": 0.0,
+    "Zoom": 1.0
+  }
+}

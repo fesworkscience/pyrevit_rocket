@@ -1,0 +1,16 @@
+# IDE
+.idea/
+*.pyc
+__pycache__/
+
+# Claude Code
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+*.egg-info/
+dist/
+build/

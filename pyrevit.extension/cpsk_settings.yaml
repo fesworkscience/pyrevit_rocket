@@ -1,0 +1,18 @@
+# CPSK Tools - Настройки
+# Автоматически сгенерировано
+
+auth:
+  remember: false
+  token:
+  email:
+
+notifications:
+  show_env_warnings: true
+  show_startup_check: true
+
+environment:
+  venv_path: lib/.venv
+  python_path:
+  last_check: "2026-01-07 22:36:49"
+  installed: false
+  requirements_path: lib/requirements.txt

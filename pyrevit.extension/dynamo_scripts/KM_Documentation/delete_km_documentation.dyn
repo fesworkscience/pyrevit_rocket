@@ -1,0 +1,161 @@
+{
+  "Uuid": "b2c3d4e5-f6a7-8901-bcde-f23456789012",
+  "IsCustomNode": false,
+  "Description": "Deletes all KM documentation elements created by create_km_documentation script (sheets, views, schedules with KM_AUTO_ prefix)",
+  "Name": "delete_km_documentation",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "# -*- coding: utf-8 -*-\n# Dynamo Script for Revit 2025 - KM Documentation Deleter\n# Removes all elements with KM_AUTO_ prefix\n\nimport clr\nclr.AddReference('RevitAPI')\nclr.AddReference('RevitAPIUI')\nclr.AddReference('RevitServices')\nclr.AddReference('RevitNodes')\n\nfrom RevitServices.Persistence import DocumentManager\nfrom RevitServices.Transactions import TransactionManager\n\nfrom Autodesk.Revit.DB import *\nfrom Autodesk.Revit.UI import *\n\nimport Revit\nclr.ImportExtensions(Revit.Elements)\nclr.ImportExtensions(Revit.GeometryConversion)\n\n# Configuration - must match the creation script\nPREFIX = \"KM_AUTO_\"\n\ndoc = DocumentManager.Instance.CurrentDBDocument\nuidoc = DocumentManager.Instance.CurrentUIApplication.ActiveUIDocument\n\ndef get_elements_with_prefix():\n    \"\"\"Find all elements with the specified prefix\"\"\"\n    elements_to_delete = []\n    \n    # 1. Find sheets with prefix\n    sheets = FilteredElementCollector(doc).OfClass(ViewSheet).ToElements()\n    for sheet in sheets:\n        if sheet.Name.startswith(PREFIX) or sheet.SheetNumber.startswith(PREFIX):\n            elements_to_delete.append(sheet)\n    \n    # 2. Find views with prefix (3D, plans, sections)\n    views = FilteredElementCollector(doc).OfClass(View).ToElements()\n    for view in views:\n        try:\n            if view.Name.startswith(PREFIX):\n                # Don't delete if it's a template\n                if not view.IsTemplate:\n                    elements_to_delete.append(view)\n        except:\n            pass\n    \n    # 3. Find schedules with prefix\n    schedules = FilteredElementCollector(doc).OfClass(ViewSchedule).ToElements()\n    for schedule in schedules:\n        try:\n            if schedule.Name.startswith(PREFIX):\n                elements_to_delete.append(schedule)\n        except:\n            pass\n    \n    # 4. Find schedule sheet instances (placed schedules on sheets)\n    schedule_instances = FilteredElementCollector(doc).OfClass(ScheduleSheetInstance).ToElements()\n    for si in schedule_instances:\n        try:\n            schedule = doc.GetElement(si.ScheduleId)\n            if schedule and schedule.Name.startswith(PREFIX):\n                elements_to_delete.append(si)\n        except:\n            pass\n    \n    # 5. Find viewports on sheets with prefix\n    viewports = FilteredElementCollector(doc).OfClass(Viewport).ToElements()\n    for vp in viewports:\n        try:\n            sheet = doc.GetElement(vp.SheetId)\n            if sheet and (sheet.Name.startswith(PREFIX) or sheet.SheetNumber.startswith(PREFIX)):\n                elements_to_delete.append(vp)\n        except:\n            pass\n    \n    return elements_to_delete\n\ndef delete_elements(elements):\n    \"\"\"Delete elements and return count of deleted\"\"\"\n    deleted_count = 0\n    errors = []\n    \n    # Sort elements to delete viewports and schedule instances first\n    # Then views and schedules, then sheets\n    def get_priority(elem):\n        if isinstance(elem, Viewport):\n            return 0\n        elif isinstance(elem, ScheduleSheetInstance):\n            return 1\n        elif isinstance(elem, ViewSchedule):\n            return 2\n        elif isinstance(elem, View) and not isinstance(elem, ViewSheet):\n            return 3\n        elif isinstance(elem, ViewSheet):\n            return 4\n        return 5\n    \n    sorted_elements = sorted(elements, key=get_priority)\n    \n    for elem in sorted_elements:\n        try:\n            elem_name = \"\"\n            try:\n                if hasattr(elem, 'Name'):\n                    elem_name = elem.Name\n                elif hasattr(elem, 'SheetNumber'):\n                    elem_name = elem.SheetNumber\n            except:\n                elem_name = str(elem.Id.IntegerValue)\n            \n            doc.Delete(elem.Id)\n            deleted_count += 1\n        except Exception as e:\n            errors.append(f\"{elem_name}: {str(e)}\")\n    \n    return deleted_count, errors\n\n# Main execution\nTransactionManager.Instance.EnsureInTransaction(doc)\n\nlog_messages = []\ndeleted_count = 0\nerrors = []\n\ntry:\n    # Find elements with prefix\n    elements_to_delete = get_elements_with_prefix()\n    log_messages.append(f\"Found {len(elements_to_delete)} elements with prefix '{PREFIX}'\")\n    \n    if elements_to_delete:\n        # Delete elements\n        deleted_count, errors = delete_elements(elements_to_delete)\n        log_messages.append(f\"Deleted {deleted_count} elements\")\n        \n        if errors:\n            log_messages.append(f\"Errors during deletion: {len(errors)}\")\n            for err in errors[:10]:  # Show first 10 errors\n                log_messages.append(f\"  - {err}\")\n    else:\n        log_messages.append(\"No elements found to delete\")\n        \nexcept Exception as e:\n    log_messages.append(f\"Error: {str(e)}\")\n\nTransactionManager.Instance.TransactionTaskDone()\n\n# Output\nOUT = {\n    \"deleted_count\": deleted_count,\n    \"prefix\": PREFIX,\n    \"log\": log_messages,\n    \"errors\": errors\n}\n",
+      "Engine": "CPython3",
+      "EngineName": "CPython3",
+      "VariableInputPorts": true,
+      "NodeType": "PythonScriptNode",
+      "Id": "python_delete",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "output_0",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs Python script with CPython3 engine"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "NodeType": "ExtensionNode",
+      "Id": "watch_output",
+      "Inputs": [
+        {
+          "Id": "input_0",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "output_1",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualize the output"
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "output_0",
+      "End": "input_0",
+      "Id": "connector_0"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "Properties",
+      "Version": "3.0",
+      "Data": {}
+    }
+  ],
+  "Author": "Dynamo Script Generator",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "3.0.0.0",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Background Preview",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "NodeViews": [
+      {
+        "Id": "python_delete",
+        "Name": "KM Documentation Deleter",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 250.0,
+        "Y": 300.0
+      },
+      {
+        "Id": "watch_output",
+        "Name": "Watch Result",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 650.0,
+        "Y": 300.0
+      }
+    ],
+    "Annotations": [
+      {
+        "Id": "annotation_1",
+        "Title": "KM Documentation Deleter",
+        "DescriptionText": "Deletes all elements created by the create_km_documentation script.\nSearches for elements with 'KM_AUTO_' prefix and removes them.\n\nDeletes in order:\n1. Viewports\n2. Schedule sheet instances\n3. Schedules\n4. Views (3D, plans, sections)\n5. Sheets",
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": ["python_delete"],
+        "HasNestedGroups": false,
+        "Left": 240.0,
+        "Top": 200.0,
+        "Width": 300.0,
+        "Height": 250.0,
+        "FontSize": 14.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": 230.0,
+        "InitialHeight": 200.0,
+        "TextblockHeight": 20.0,
+        "Background": "#FFFF7B7B"
+      }
+    ],
+    "X": 0.0,
+    "Y": 0.0,
+    "Zoom": 1.0
+  }
+}

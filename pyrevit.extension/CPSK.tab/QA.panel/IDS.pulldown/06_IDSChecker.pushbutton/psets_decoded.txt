@@ -1,0 +1,22 @@
+Found PropertySets (unique):
+==================================================
+Pset_BuildingCommon
+Pset_BuildingElementProxyCommon
+Pset_BuildingStoreyCommon
+Pset_BuildingSystemCommon
+Pset_EnvironmentalImpactIndicators
+Pset_FootingCommon
+Pset_ReinforcementBarCountOfIndependentFooting
+Pset_ReinforcementBarPitchOfContinuousFooting
+Pset_ReinforcingBarCommon
+Pset_SiteCommon
+Местоположение
+
+
+Checking for target PropertySets:
+==================================================
+Местоположение: FOUND
+Строительные параметры: NOT FOUND
+Геометрические параметры: NOT FOUND
+Маркировка: NOT FOUND
+Идентификация: NOT FOUND

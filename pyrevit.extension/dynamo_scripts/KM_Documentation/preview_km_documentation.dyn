@@ -1,0 +1,161 @@
+{
+  "Uuid": "c3d4e5f6-a7b8-9012-cdef-345678901234",
+  "IsCustomNode": false,
+  "Description": "Preview what will be created/deleted - NO CHANGES made to the model",
+  "Name": "preview_km_documentation",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "# Dynamo Script for Revit 2025 - KM Documentation Preview\n# Groups elements by actual dimensions from parameters\n# Shows which title block will be used\n\nimport clr\n\ntry:\n    clr.AddReference('RevitAPI')\n    clr.AddReference('RevitAPIUI')\n    clr.AddReference('RevitServices')\n    clr.AddReference('RevitNodes')\n    \n    from RevitServices.Persistence import DocumentManager\n    from Autodesk.Revit.DB import FilteredElementCollector, BuiltInCategory, FamilySymbol\n    from Autodesk.Revit.DB import ViewSheet, View, ViewSchedule, BuiltInParameter, StorageType\n    from Autodesk.Revit.UI import TaskDialog\n    \n    import Revit\n    clr.ImportExtensions(Revit.Elements)\n    \n    PREFIX = \"KM_AUTO_\"\n    TITLE_BLOCK_FAMILY = \"ADSK_ОсновнаяНадпись\"\n    TITLE_BLOCK_TYPE = \"Форма 3\"\n    doc = DocumentManager.Instance.CurrentDBDocument\n    debug_log = []\n    \n    def get_param_value_str(param):\n        try:\n            if not param or not param.HasValue:\n                return None\n            st = param.StorageType\n            if st == StorageType.Double:\n                return str(round(param.AsDouble() * 304.8, 1))\n            elif st == StorageType.String:\n                return param.AsString() or None\n            elif st == StorageType.Integer:\n                return str(param.AsInteger())\n            elif st == StorageType.ElementId:\n                eid = param.AsElementId()\n                if eid.IntegerValue > 0:\n                    ref_elem = doc.GetElement(eid)\n                    if ref_elem and hasattr(ref_elem, 'Name'):\n                        return ref_elem.Name\n                return None\n            return None\n        except:\n            return None\n    \n    def get_all_params(elem):\n        result = {}\n        try:\n            params = elem.GetOrderedParameters()\n            for param in params:\n                try:\n                    name = param.Definition.Name\n                    val = get_param_value_str(param)\n                    if val:\n                        result[name] = val\n                except:\n                    pass\n        except Exception as ex:\n            debug_log.append(\"GetOrderedParams error: \" + str(ex))\n        return result\n    \n    def get_type_params(elem):\n        result = {}\n        try:\n            type_id = elem.GetTypeId()\n            if type_id.IntegerValue > 0:\n                elem_type = doc.GetElement(type_id)\n                if elem_type:\n                    params = elem_type.GetOrderedParameters()\n                    for param in params:\n                        try:\n                            name = param.Definition.Name\n                            val = get_param_value_str(param)\n                            if val:\n                                result[name] = val\n                        except:\n                            pass\n        except Exception as ex:\n            debug_log.append(\"GetTypeParams error: \" + str(ex))\n        return result\n    \n    def get_type_name_safe(elem):\n        try:\n            type_id = elem.GetTypeId()\n            if type_id.IntegerValue <= 0:\n                return \"NoType\"\n            elem_type = doc.GetElement(type_id)\n            if not elem_type:\n                return \"TypeNotFound\"\n            name_parts = []\n            try:\n                fn = elem_type.FamilyName\n                if fn:\n                    name_parts.append(fn)\n            except:\n                pass\n            try:\n                n = elem_type.Name\n                if n:\n                    name_parts.append(n)\n            except:\n                try:\n                    p = elem_type.get_Parameter(BuiltInParameter.SYMBOL_NAME_PARAM)\n                    if p and p.HasValue:\n                        name_parts.append(p.AsString())\n                except:\n                    pass\n            return \": \".join(name_parts) if name_parts else \"Type_\" + str(type_id.IntegerValue)\n        except:\n            return \"Unknown\"\n    \n    def get_element_size_key(elem):\n        try:\n            inst_params = get_all_params(elem)\n            type_params = get_type_params(elem)\n            \n            type_name = get_type_name_safe(elem)\n            \n            size_parts = []\n            length = inst_params.get('Длина') or inst_params.get('Length') or inst_params.get('ADSK_Длина балки истинная') or inst_params.get('Фактическая длина')\n            if length:\n                size_parts.append(\"L=\" + str(length))\n            \n            section = type_params.get('Сечение') or type_params.get('Section') or type_params.get('Профиль') or type_params.get('Profile')\n            if section:\n                size_parts.append(str(section))\n            \n            h = type_params.get('h') or inst_params.get('h')\n            b = type_params.get('b') or inst_params.get('b')\n            if h:\n                size_parts.append(\"h=\" + str(h))\n            if b:\n                size_parts.append(\"b=\" + str(b))\n            \n            if size_parts:\n                return type_name + \" | \" + \", \".join(size_parts)\n            return type_name\n        except Exception as ex:\n            debug_log.append(\"size_key err: \" + str(ex))\n            return \"Error\"\n    \n    def get_km_elements():\n        categories = [\n            BuiltInCategory.OST_StructuralFraming,\n            BuiltInCategory.OST_StructuralColumns,\n            BuiltInCategory.OST_StructuralFoundation\n        ]\n        elements = []\n        for cat in categories:\n            try:\n                collector = FilteredElementCollector(doc).OfCategory(cat).WhereElementIsNotElementType()\n                elems = collector.ToElements()\n                for e in elems:\n                    elements.append(e)\n            except:\n                pass\n        return elements\n    \n    def get_unique_sizes(elements):\n        size_dict = {}\n        for elem in elements:\n            key = get_element_size_key(elem)\n            if key not in size_dict:\n                size_dict[key] = 0\n            size_dict[key] = size_dict[key] + 1\n        return size_dict\n    \n    def get_existing_prefixed():\n        sheets = []\n        views = []\n        schedules = []\n        try:\n            for s in FilteredElementCollector(doc).OfClass(ViewSheet).ToElements():\n                if s.Name.startswith(PREFIX) or s.SheetNumber.startswith(PREFIX):\n                    sheets.append(s.SheetNumber + \" - \" + s.Name)\n        except:\n            pass\n        try:\n            for v in FilteredElementCollector(doc).OfClass(View).ToElements():\n                if v.Name.startswith(PREFIX) and not v.IsTemplate:\n                    views.append(v.Name)\n        except:\n            pass\n        try:\n            for sc in FilteredElementCollector(doc).OfClass(ViewSchedule).ToElements():\n                if sc.Name.startswith(PREFIX):\n                    schedules.append(sc.Name)\n        except:\n            pass\n        return sheets, views, schedules\n    \n    def get_specific_title_block(family_name, type_name):\n        \"\"\"Find title block by family name and type name\"\"\"\n        collector = FilteredElementCollector(doc).OfCategory(BuiltInCategory.OST_TitleBlocks).OfClass(FamilySymbol)\n        found_tb = None\n        fallback_tb = None\n        all_title_blocks = []\n        \n        for tb in collector:\n            try:\n                tb_family = tb.Family.Name if tb.Family else \"\"\n                tb_type = tb.Name if hasattr(tb, 'Name') else \"\"\n                all_title_blocks.append(tb_family + \": \" + tb_type)\n                \n                # Exact match\n                if tb_family == family_name and tb_type == type_name:\n                    found_tb = tb\n                    break\n                \n                # Partial match (contains)\n                if family_name in tb_family:\n                    if type_name in tb_type:\n                        found_tb = tb\n                        break\n                    elif fallback_tb is None:\n                        fallback_tb = tb\n                \n                # First available as fallback\n                if fallback_tb is None:\n                    fallback_tb = tb\n            except:\n                pass\n        \n        if found_tb:\n            return found_tb, all_title_blocks, \"FOUND\"\n        elif fallback_tb:\n            return fallback_tb, all_title_blocks, \"FALLBACK\"\n        return None, all_title_blocks, \"NOT_FOUND\"\n    \n    km_elements = get_km_elements()\n    size_dict = get_unique_sizes(km_elements)\n    existing_sheets, existing_views, existing_schedules = get_existing_prefixed()\n    \n    # Find specific title block\n    title_block, all_tb_list, tb_status = get_specific_title_block(TITLE_BLOCK_FAMILY, TITLE_BLOCK_TYPE)\n    if title_block:\n        try:\n            title_block_name = title_block.Family.Name + \": \" + title_block.Name\n        except:\n            title_block_name = \"Unknown\"\n    else:\n        title_block_name = None\n    \n    element_summary = {}\n    for elem in km_elements:\n        try:\n            cat_name = elem.Category.Name if elem.Category else \"Unknown\"\n            if cat_name not in element_summary:\n                element_summary[cat_name] = 0\n            element_summary[cat_name] = element_summary[cat_name] + 1\n        except:\n            pass\n    \n    sample_params_list = []\n    if len(km_elements) > 0:\n        all_p = get_all_params(km_elements[0])\n        type_p = get_type_params(km_elements[0])\n        for k, v in list(type_p.items())[:15]:\n            sample_params_list.append(\"[T] \" + k + \"=\" + v)\n        for k, v in list(all_p.items())[:15]:\n            sample_params_list.append(\"[I] \" + k + \"=\" + v)\n    \n    lines = []\n    lines.append(\"PREFIX: \" + PREFIX)\n    lines.append(\"\")\n    lines.append(\"TITLE BLOCK:\")\n    lines.append(\"  Looking for: \" + TITLE_BLOCK_FAMILY + \": \" + TITLE_BLOCK_TYPE)\n    if title_block_name:\n        lines.append(\"  Will use: \" + title_block_name + \" [\" + tb_status + \"]\")\n    else:\n        lines.append(\"  WARNING: No title block found!\")\n    lines.append(\"  Available (\" + str(len(all_tb_list)) + \"):\")\n    for tb_name in all_tb_list[:5]:\n        lines.append(\"    - \" + tb_name)\n    if len(all_tb_list) > 5:\n        lines.append(\"    ... +\" + str(len(all_tb_list) - 5) + \" more\")\n    lines.append(\"\")\n    lines.append(\"KM ELEMENTS: \" + str(len(km_elements)) + \" total, \" + str(len(size_dict)) + \" unique sizes\")\n    for cat_name, count in element_summary.items():\n        lines.append(\"  \" + cat_name + \": \" + str(count))\n    lines.append(\"\")\n    lines.append(\"UNIQUE SIZES:\")\n    sorted_sizes = sorted(size_dict.items(), key=lambda x: -x[1])\n    for size_key, count in sorted_sizes[:40]:\n        lines.append(\"  - \" + size_key + \" (\" + str(count) + \")\")\n    if len(sorted_sizes) > 40:\n        lines.append(\"  ... +\" + str(len(sorted_sizes) - 40) + \" more\")\n    lines.append(\"\")\n    lines.append(\"SAMPLE PARAMS ([T]=type, [I]=instance):\")\n    for p in sample_params_list:\n        lines.append(\"  \" + p)\n    lines.append(\"\")\n    if debug_log:\n        lines.append(\"DEBUG:\")\n        for d in debug_log[:10]:\n            lines.append(\"  \" + d)\n        lines.append(\"\")\n    lines.append(\"WILL CREATE: \" + str(6 + len(size_dict)) + \" sheets\")\n    lines.append(\"EXISTING: \" + str(len(existing_sheets)) + \" sheets, \" + str(len(existing_views)) + \" views\")\n    \n    result_text = \"\\n\".join(lines)\n    TaskDialog.Show(\"KM Preview\", result_text)\n    OUT = result_text\n\nexcept Exception as e:\n    import traceback\n    error_msg = \"ERROR: \" + str(e) + \"\\n\" + traceback.format_exc()\n    TaskDialog.Show(\"Error\", error_msg)\n    OUT = error_msg\n",
+      "Engine": "CPython3",
+      "EngineName": "CPython3",
+      "VariableInputPorts": true,
+      "NodeType": "PythonScriptNode",
+      "Id": "python_preview",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "output_0",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs Python script with CPython3 engine"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "NodeType": "ExtensionNode",
+      "Id": "watch_output",
+      "Inputs": [
+        {
+          "Id": "input_0",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "output_1",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualize the output"
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "output_0",
+      "End": "input_0",
+      "Id": "connector_0"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "Properties",
+      "Version": "3.0",
+      "Data": {}
+    }
+  ],
+  "Author": "Dynamo Script Generator",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "3.0.0.0",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Background Preview",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "NodeViews": [
+      {
+        "Id": "python_preview",
+        "Name": "Preview Analysis",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 250.0,
+        "Y": 300.0
+      },
+      {
+        "Id": "watch_output",
+        "Name": "Watch Result",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 650.0,
+        "Y": 300.0
+      }
+    ],
+    "Annotations": [
+      {
+        "Id": "annotation_1",
+        "Title": "Preview - No Changes",
+        "DescriptionText": "Shows a popup dialog with analysis results.\n\nNo changes are made to the model.\n\nRun this BEFORE create/delete scripts.",
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": ["python_preview"],
+        "HasNestedGroups": false,
+        "Left": 240.0,
+        "Top": 200.0,
+        "Width": 300.0,
+        "Height": 250.0,
+        "FontSize": 14.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": 230.0,
+        "InitialHeight": 200.0,
+        "TextblockHeight": 20.0,
+        "Background": "#FF71C6E8"
+      }
+    ],
+    "X": 0.0,
+    "Y": 0.0,
+    "Zoom": 1.0
+  }
+}

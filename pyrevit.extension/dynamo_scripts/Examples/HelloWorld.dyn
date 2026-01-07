@@ -1,0 +1,20 @@
+{
+  "Uuid": "example-hello-world",
+  "IsCustomNode": false,
+  "Description": "Example Dynamo script - Hello World",
+  "Name": "HelloWorld",
+  "ElementResolver": {},
+  "Inputs": [],
+  "Outputs": [],
+  "Nodes": [],
+  "Connectors": [],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [],
+  "Author": "CPSK",
+  "Linting": {},
+  "Bindings": [],
+  "View": {}
+}

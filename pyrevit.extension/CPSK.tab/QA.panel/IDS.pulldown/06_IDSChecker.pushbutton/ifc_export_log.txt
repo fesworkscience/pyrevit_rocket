@@ -1,0 +1,79 @@
+Config 'Настройка 1_new5': found
+IFC Version: 25 -> IFC4x3
+ExportUserDefinedPsets: true
+Mapping file: C:\Users\feduloves\Desktop\ЦГЭ_IDS СПб ГАУ ЦГЭ (Конструктивные решения) — копия_IFCMapping.txt (EXISTS)
+ExportIFCCommonPropertySets: true
+Output path: c:\users\local_feduloves2\temp\7aecade4-a35b-4fd5-bbaa-b24545921d74\rhino_khz_R25_ids_check.ifc
+Folder: c:\users\local_feduloves2\temp\7aecade4-a35b-4fd5-bbaa-b24545921d74
+Filename: rhino_khz_R25_ids_check
+
+--- EXPORT START ---
+Transaction started
+Export result: True
+Transaction committed
+
+Full config:
+{
+  "ExportPartsAsBuildingElements": false, 
+  "Use2DRoomBoundaryForVolume": false, 
+  "ExportIFCCommonPropertySets": true, 
+  "IFCFileType": 0, 
+  "ExportUserDefinedParameterMapping": false, 
+  "ExportRoomsInView": false, 
+  "ExportMaterialPsets": true, 
+  "UseOnlyTriangulation": false, 
+  "IncludeSiteElevation": true, 
+  "StoreIFCGUID": false, 
+  "ProjectAddress": {
+    "UpdateProjectInformation": false, 
+    "AssignAddressToSite": false, 
+    "AssignAddressToBuilding": true
+  }, 
+  "IncludeSteelElements": true, 
+  "SpaceBoundaries": 0, 
+  "ExportLinkedFiles": 0, 
+  "UseActiveViewGeometry": true, 
+  "GeoRefCRSName": "", 
+  "CategoryMapping": null, 
+  "GeoRefCRSDesc": "", 
+  "TessellationLevelOfDetail": 0.5, 
+  "ExportUserDefinedPsets": true, 
+  "FacilityPredefinedType": null, 
+  "UseVisibleRevitNameAsEntityName": false, 
+  "COBieProjectInfo": "", 
+  "ActivePhaseId": -1, 
+  "VisibleElementsOfCurrentView": false, 
+  "ExportUserDefinedPsetsFileName": "C:\\Users\\feduloves\\Desktop\\ЦГЭ_IDS СПб ГАУ ЦГЭ (Конструктивные решения) — копия_IFCMapping.txt", 
+  "ClassificationSettings": {
+    "ClassificationEdition": null, 
+    "ClassificationEditionDate": "/Date(1767744000000)/", 
+    "ClassificationFieldName": null, 
+    "ClassificationSource": null, 
+    "ClassificationLocation": null, 
+    "ClassificationName": null
+  }, 
+  "ExportSchedulesAsPsets": false, 
+  "ExportSpecificSchedules": false, 
+  "ExportSolidModelRep": true, 
+  "FacilityType": 0, 
+  "ExportInternalRevitPropertySets": false, 
+  "UseTypeNameOnlyForIfcType": false, 
+  "SitePlacement": 0, 
+  "ExchangeRequirement": 2, 
+  "SplitWallsAndColumns": false, 
+  "Export2DElements": false, 
+  "COBieCompanyInfo": "", 
+  "SelectedSite": "Встроенный", 
+  "GeoRefEPSGCode": "", 
+  "Name": "Настройка 1_new5", 
+  "OwnerHistoryLastModified": false, 
+  "IFCVersion": 25, 
+  "ExportBoundingBox": false, 
+  "ExcludeFilter": "", 
+  "ExportUserDefinedParameterMappingFileName": "", 
+  "ExportBaseQuantities": true, 
+  "UseFamilyAndTypeNameForReference": true, 
+  "GeoRefGeodeticDatum": "", 
+  "GeoRefMapUnit": "", 
+  "ExportHostAsSingleEntity": false
+}

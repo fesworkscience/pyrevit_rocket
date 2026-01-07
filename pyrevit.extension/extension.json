@@ -1,0 +1,11 @@
+{
+  "name": "CPSK Инструменты",
+  "description": "Автоматизация проектирования промышленных зданий",
+  "author": "CPSK Team",
+  "version": "0.1.0",
+  "type": "extension",
+  "engine": {
+    "type": "cpython",
+    "version": "3"
+  }
+}

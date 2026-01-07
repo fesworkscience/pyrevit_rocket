@@ -1,0 +1,19 @@
+# CPSK Tools - Python Dependencies
+# Установка: pip install -r requirements.txt
+
+# IFC/IDS проверка
+ifcopenshell>=0.8.0
+ifctester>=0.8.0
+
+# Работа с XML/HTML
+lxml>=5.0.0
+beautifulsoup4>=4.12.0
+
+# HTTP запросы (для API)
+requests>=2.31.0
+
+# Работа с YAML/JSON
+PyYAML>=6.0
+
+# Утилиты
+python-dateutil>=2.8.0

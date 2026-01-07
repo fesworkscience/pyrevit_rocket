@@ -1,0 +1,32 @@
+=== IFC Config Debug Log ===
+== save_ifc_config_to_storage ==
+Каждая конфигурация = отдельный DataStorage!
+- config_name: Настройка 1_new5
+
+Шаг 1: Проверка существующих конфигураций...
+- Существующих конфигураций: 1
+- Конфигурация 'Настройка 1_new5' не существует, можно создавать
+
+Шаг 2: Поиск схемы IFCExportConfigurationMap...
+- Найдена схема: IFCExportConfigurationMap
+- GUID схемы: c2a3e6fe-ce51-4f35-8ff1-20c34567b687
+- Поле: MapField
+
+Шаг 3: JSON создан, длина: 1971 символов
+JSON preview (first 300 chars):
+{"ExportPartsAsBuildingElements": false, "Use2DRoomBoundaryForVolume": false, "ExportIFCCommonPropertySets": true, "IFCFileType": 0, "ExportUserDefinedParameterMapping": false, "ExportRoomsInView": false, "UseOnlyTriangulation": false, "ExportMaterialPsets": true, "StoreIFCGUID": false, "IncludeSite
+
+Шаг 4: Создание нового DataStorage...
+- Транзакция начата
+- Новый DataStorage создан: 752949
+- Entity создан со схемой IFCExportConfigurationMap
+- JSON записан в поле MapField
+- Entity установлен в DataStorage
+- Имя DataStorage: IFCExportConfiguration_Настройка 1_new5
+- Транзакция завершена (Commit)
+
+Шаг 5: Проверка после сохранения...
+- Всего конфигураций: 2
+УСПЕХ: Конфигурация 'Настройка 1_new5' найдена!
+
+== ЗАВЕРШЕНО ==
