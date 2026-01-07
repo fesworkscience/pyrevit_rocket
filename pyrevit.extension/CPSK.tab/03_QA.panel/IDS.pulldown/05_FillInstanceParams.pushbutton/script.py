@@ -8,6 +8,8 @@ __title__ = "Заполнить\nэкземпляры"
 __author__ = "CPSK"
 
 import clr
+import os
+import sys
 import re
 import codecs
 
@@ -24,6 +26,17 @@ from System.Windows.Forms import (
 from System.Drawing import Point, Size, Color
 
 from pyrevit import revit, script
+
+# Добавляем lib в путь для импорта cpsk_config
+SCRIPT_DIR = os.path.dirname(__file__)
+LIB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))), "lib")
+if LIB_DIR not in sys.path:
+    sys.path.insert(0, LIB_DIR)
+
+# Проверка окружения
+from cpsk_config import require_environment
+if not require_environment():
+    sys.exit()
 
 from Autodesk.Revit.DB import Transaction, StorageType
 from Autodesk.Revit.UI.Selection import ObjectType

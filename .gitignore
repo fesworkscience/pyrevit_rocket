@@ -15,3 +15,7 @@ Thumbs.db
 dist/
 build/
 .venv/
+
+# CPSK Settings (user-specific)
+cpsk_settings.yaml
+setup_env.log

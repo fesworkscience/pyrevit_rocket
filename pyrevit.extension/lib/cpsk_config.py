@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 CPSK Config - Модуль управления настройками CPSK Tools.
-Работает с cpsk_settings.yaml в корне extension.
+Работает с cpsk_settings.yaml в корне проекта.
 """
 
 import os
@@ -12,7 +12,7 @@ from datetime import datetime
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 EXTENSION_DIR = os.path.dirname(_THIS_DIR)
 PROJECT_DIR = os.path.dirname(EXTENSION_DIR)  # Корень проекта (pyrevit_rocket/)
-SETTINGS_FILE = os.path.join(EXTENSION_DIR, "cpsk_settings.yaml")
+SETTINGS_FILE = os.path.join(PROJECT_DIR, "cpsk_settings.yaml")
 LIB_DIR = _THIS_DIR
 
 # Путь к venv вне OneDrive (OneDrive блокирует os.path.exists для файлов в Documents)
@@ -641,3 +641,67 @@ def check_environment():
     set_setting("environment.last_check", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
     return result
+
+
+# Глобальная переменная для кэширования статуса окружения в текущей сессии
+_ENVIRONMENT_CHECKED = None
+
+
+def is_environment_ready():
+    """
+    Проверка готовности окружения.
+    Результат кэшируется в глобальной переменной на время сессии.
+    """
+    global _ENVIRONMENT_CHECKED
+
+    # Если уже проверяли в этой сессии - возвращаем кэшированный результат
+    if _ENVIRONMENT_CHECKED is not None:
+        return _ENVIRONMENT_CHECKED
+
+    # Полная проверка
+    venv_python = get_venv_python()
+    if not os.path.exists(venv_python):
+        _ENVIRONMENT_CHECKED = False
+        return False
+
+    result = check_environment()
+    _ENVIRONMENT_CHECKED = result["is_ready"]
+    return _ENVIRONMENT_CHECKED
+
+
+def reset_environment_cache():
+    """Сбросить кэш проверки окружения (вызывать после установки)."""
+    global _ENVIRONMENT_CHECKED
+    _ENVIRONMENT_CHECKED = None
+
+
+def require_environment(show_message=True):
+    """
+    Проверить окружение и показать сообщение если не готово.
+    Используется в начале скриптов для блокировки выполнения.
+
+    Возвращает True если окружение готово, False если нет.
+
+    Пример использования:
+        from cpsk_config import require_environment
+        if not require_environment():
+            import sys
+            sys.exit()
+    """
+    if is_environment_ready():
+        return True
+
+    if show_message:
+        try:
+            from pyrevit import forms
+            forms.alert(
+                "Окружение не установлено!\n\n"
+                "Перейдите в Settings → Окружение\n"
+                "и нажмите 'Установить окружение'.",
+                title="CPSK - Требуется настройка",
+                warn_icon=True
+            )
+        except Exception:
+            pass
+
+    return False

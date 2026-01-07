@@ -33,6 +33,17 @@ from System.Xml import XmlDocument, XmlNamespaceManager
 
 from pyrevit import revit, forms, script
 
+# Добавляем lib в путь для импорта cpsk_config
+SCRIPT_DIR = os.path.dirname(__file__)
+LIB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))), "lib")
+if LIB_DIR not in sys.path:
+    sys.path.insert(0, LIB_DIR)
+
+# Проверка окружения
+from cpsk_config import require_environment, get_venv_python
+if not require_environment():
+    sys.exit()
+
 # Revit API
 from Autodesk.Revit.DB import Transaction, FilteredElementCollector, BuiltInParameter, ElementId, TemporaryViewMode
 from System.Collections.Generic import List
@@ -44,17 +55,10 @@ uidoc = revit.uidoc
 app = doc.Application
 output = script.get_output()
 
-SCRIPT_DIR = os.path.dirname(__file__)
-LIB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))), "lib")
 IDS_CHECKER_SCRIPT = os.path.join(LIB_DIR, "ids_checker.py")
 
-PYTHON_PATHS = [
-    r"C:\ProgramData\miniconda3\python.exe",
-    r"C:\Users\feduloves\anaconda3\python.exe",
-    r"C:\Python311\python.exe",
-    r"C:\Python310\python.exe",
-    r"C:\Python39\python.exe",
-]
+# Используем Python из установленного окружения
+VENV_PYTHON = get_venv_python()
 
 
 # === ПАРСЕР IDS ===
@@ -596,11 +600,9 @@ def export_to_ifc_with_config(doc, output_path, config_name=None, _os=None, _LIB
 
 def find_python(python_paths=None):
     """Найти CPython интерпретатор."""
-    if python_paths is None:
-        python_paths = PYTHON_PATHS
-    for path in python_paths:
-        if os.path.exists(path):
-            return path
+    # Сначала проверяем установленное окружение
+    if os.path.exists(VENV_PYTHON):
+        return VENV_PYTHON
     return None
 
 

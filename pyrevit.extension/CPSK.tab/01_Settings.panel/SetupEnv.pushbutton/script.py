@@ -40,7 +40,7 @@ from cpsk_config import (
     get_setting, set_setting,
     get_venv_path, get_requirements_path, get_venv_python, get_venv_pip,
     find_system_python, get_python_version, check_environment,
-    VENV_BASE_DIR
+    VENV_BASE_DIR, reset_environment_cache
 )
 
 output = script.get_output()
@@ -573,6 +573,7 @@ class SetupEnvForm(Form):
             self.run_check()
 
             set_setting("environment.installed", True)
+            reset_environment_cache()  # Сбросить кэш для новых проверок
 
             # Сохраняем успешный лог
             log_path = self.save_log(log_lines, success=True)
