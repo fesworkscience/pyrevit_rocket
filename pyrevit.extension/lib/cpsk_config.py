@@ -11,14 +11,18 @@ from datetime import datetime
 # Пути
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 EXTENSION_DIR = os.path.dirname(_THIS_DIR)
+PROJECT_DIR = os.path.dirname(EXTENSION_DIR)  # Корень проекта (pyrevit_rocket/)
 SETTINGS_FILE = os.path.join(EXTENSION_DIR, "cpsk_settings.yaml")
 LIB_DIR = _THIS_DIR
 
+# Путь к venv вне OneDrive (OneDrive блокирует os.path.exists для файлов в Documents)
+VENV_BASE_DIR = r"C:\cpsk_envs"
+VENV_NAME = "pyrevit_rocket"
+
 # Значения по умолчанию
+# Примечание: venv_path и requirements_path фиксированы в коде (get_venv_path, get_requirements_path)
 DEFAULT_SETTINGS = {
     "environment": {
-        "venv_path": "lib/.venv",
-        "requirements_path": "lib/requirements.txt",
         "python_path": "",
         "installed": False,
         "last_check": ""
@@ -236,15 +240,16 @@ def get_relative_path(absolute_path):
 
 
 def get_venv_path():
-    """Получить абсолютный путь к venv."""
-    rel_path = get_setting("environment.venv_path", "lib/.venv")
-    return get_absolute_path(rel_path)
+    """Получить абсолютный путь к venv (вне OneDrive)."""
+    # Фиксированный путь - C:\cpsk_envs\pyrevit_rocket
+    # Вне OneDrive чтобы избежать проблем с placeholder файлами
+    return os.path.normpath(os.path.join(VENV_BASE_DIR, VENV_NAME))
 
 
 def get_requirements_path():
     """Получить абсолютный путь к requirements.txt."""
-    rel_path = get_setting("environment.requirements_path", "lib/requirements.txt")
-    return get_absolute_path(rel_path)
+    # Фиксированный путь - requirements.txt в корне проекта
+    return os.path.normpath(os.path.join(PROJECT_DIR, "requirements.txt"))
 
 
 def get_venv_python():
@@ -305,6 +310,256 @@ def get_python_version(python_path):
         return None
 
 
+def parse_requirements(req_path):
+    """
+    Парсить requirements.txt и вернуть dict {package_name: version_spec}.
+    Примеры:
+        ifcopenshell>=0.8.0 -> {"ifcopenshell": ">=0.8.0"}
+        requests -> {"requests": ""}
+    """
+    packages = {}
+    if not os.path.exists(req_path):
+        return packages
+
+    with codecs.open(req_path, 'r', 'utf-8') as f:
+        for line in f:
+            line = line.strip()
+            # Пропуск комментариев и пустых строк
+            if not line or line.startswith('#'):
+                continue
+            # Пропуск опций (-r, -e, etc.)
+            if line.startswith('-'):
+                continue
+
+            # Парсим имя пакета и версию
+            # Форматы: package, package==1.0, package>=1.0, package[extra]>=1.0
+            pkg_name = line
+            version_spec = ""
+
+            # Убираем extras [xxx]
+            if '[' in pkg_name:
+                pkg_name = pkg_name.split('[')[0]
+
+            # Ищем спецификатор версии
+            for sep in ['>=', '<=', '==', '!=', '~=', '>', '<']:
+                if sep in line:
+                    parts = line.split(sep, 1)
+                    pkg_name = parts[0].strip()
+                    if '[' in pkg_name:
+                        pkg_name = pkg_name.split('[')[0]
+                    version_spec = sep + parts[1].strip()
+                    break
+
+            packages[pkg_name.lower()] = version_spec
+
+    return packages
+
+
+def get_installed_packages():
+    """
+    Получить список установленных пакетов в venv.
+    Возвращает dict {package_name: version}.
+    """
+    packages = {}
+    pip = get_venv_pip()
+
+    if not os.path.exists(pip):
+        return packages
+
+    try:
+        import subprocess
+        CREATE_NO_WINDOW = 0x08000000
+        output = subprocess.check_output(
+            [pip, "list", "--format=freeze"],
+            creationflags=CREATE_NO_WINDOW
+        )
+        lines = output.decode('utf-8', errors='ignore').strip().split('\n')
+
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            if '==' in line:
+                name, version = line.split('==', 1)
+                packages[name.lower()] = version
+            else:
+                packages[line.lower()] = ""
+
+    except Exception:
+        pass
+
+    return packages
+
+
+def parse_version(version_str):
+    """
+    Парсить строку версии в кортеж для сравнения.
+    Примеры:
+        "1.2.3" -> (1, 2, 3)
+        "0.8.0" -> (0, 8, 0)
+        "1.0.0a1" -> (1, 0, 0, 'a1')
+    """
+    if not version_str:
+        return (0,)
+
+    parts = []
+    current = ""
+
+    for char in version_str:
+        if char == '.':
+            if current:
+                # Пробуем преобразовать в число
+                try:
+                    parts.append(int(current))
+                except ValueError:
+                    parts.append(current)
+                current = ""
+        elif char.isdigit():
+            current += char
+        else:
+            # Начало буквенной части (alpha, beta, etc.)
+            if current:
+                try:
+                    parts.append(int(current))
+                except ValueError:
+                    parts.append(current)
+                current = ""
+            current += char
+
+    if current:
+        try:
+            parts.append(int(current))
+        except ValueError:
+            parts.append(current)
+
+    return tuple(parts) if parts else (0,)
+
+
+def compare_versions(v1, v2):
+    """
+    Сравнить две версии.
+    Возвращает: -1 если v1 < v2, 0 если v1 == v2, 1 если v1 > v2
+    """
+    p1 = parse_version(v1)
+    p2 = parse_version(v2)
+
+    # Выравниваем длину кортежей
+    max_len = max(len(p1), len(p2))
+    p1 = p1 + (0,) * (max_len - len(p1))
+    p2 = p2 + (0,) * (max_len - len(p2))
+
+    for a, b in zip(p1, p2):
+        # Если оба числа - сравниваем как числа
+        if isinstance(a, int) and isinstance(b, int):
+            if a < b:
+                return -1
+            elif a > b:
+                return 1
+        else:
+            # Строковое сравнение
+            a_str = str(a)
+            b_str = str(b)
+            if a_str < b_str:
+                return -1
+            elif a_str > b_str:
+                return 1
+
+    return 0
+
+
+def check_version_constraint(installed_ver, version_spec):
+    """
+    Проверить соответствует ли установленная версия требованию.
+    Примеры:
+        check_version_constraint("0.8.4", ">=0.8.0") -> True
+        check_version_constraint("0.7.0", ">=0.8.0") -> False
+        check_version_constraint("1.0.0", "==1.0.0") -> True
+    """
+    if not version_spec:
+        return True
+
+    # Определяем оператор и требуемую версию
+    operators = ['>=', '<=', '==', '!=', '~=', '>', '<']
+    op = None
+    required_ver = version_spec
+
+    for operator in operators:
+        if version_spec.startswith(operator):
+            op = operator
+            required_ver = version_spec[len(operator):].strip()
+            break
+
+    if not op:
+        # Нет оператора - считаем как ==
+        op = '=='
+
+    cmp_result = compare_versions(installed_ver, required_ver)
+
+    if op == '==':
+        return cmp_result == 0
+    elif op == '!=':
+        return cmp_result != 0
+    elif op == '>=':
+        return cmp_result >= 0
+    elif op == '<=':
+        return cmp_result <= 0
+    elif op == '>':
+        return cmp_result > 0
+    elif op == '<':
+        return cmp_result < 0
+    elif op == '~=':
+        # ~= означает совместимую версию (>=X.Y, <X+1.0)
+        # Упрощённо: проверяем что major.minor совпадают
+        inst_parts = parse_version(installed_ver)
+        req_parts = parse_version(required_ver)
+        if len(inst_parts) >= 2 and len(req_parts) >= 2:
+            return inst_parts[0] == req_parts[0] and inst_parts[1] >= req_parts[1]
+        return cmp_result >= 0
+
+    return True
+
+
+def compare_packages():
+    """
+    Сравнить пакеты из requirements.txt с установленными в venv.
+    Возвращает dict:
+        - missing: список пакетов которые есть в requirements, но не установлены
+        - extra: список пакетов которые установлены, но нет в requirements
+        - outdated: список пакетов с несовпадающими версиями (требуется обновление)
+        - match: True если все пакеты из requirements установлены
+    """
+    result = {
+        "missing": [],
+        "extra": [],
+        "outdated": [],
+        "match": True
+    }
+
+    req_path = get_requirements_path()
+    required = parse_requirements(req_path)
+    installed = get_installed_packages()
+
+    if not required:
+        return result
+
+    # Проверяем отсутствующие пакеты и версии
+    for pkg, version_spec in required.items():
+        if pkg not in installed:
+            result["missing"].append(pkg)
+            result["match"] = False
+        elif version_spec:
+            installed_ver = installed.get(pkg, "")
+            if not check_version_constraint(installed_ver, version_spec):
+                result["outdated"].append({
+                    "package": pkg,
+                    "required": version_spec,
+                    "installed": installed_ver
+                })
+                result["match"] = False
+
+    return result
+
+
 def check_environment():
     """
     Проверить состояние окружения.
@@ -317,9 +572,13 @@ def check_environment():
         "requirements_exists": False,
         "requirements_count": 0,
         "packages_installed": False,
+        "packages_match": True,
+        "missing_packages": [],
+        "outdated_packages": [],
         "system_python": None,
         "system_version": None,
         "is_ready": False,
+        "needs_update": False,
         "errors": []
     }
 
@@ -332,14 +591,20 @@ def check_environment():
 
         # Проверка установленных пакетов
         try:
-            import subprocess
-            pip = get_venv_pip()
-            output = subprocess.check_output([pip, "list", "--format=freeze"])
-            packages = output.decode('utf-8', errors='ignore').strip().split('\n')
+            installed = get_installed_packages()
             # Проверяем ключевые пакеты
-            package_names = [p.split('==')[0].lower() for p in packages if p]
-            if 'ifcopenshell' in package_names and 'ifctester' in package_names:
+            if 'ifcopenshell' in installed and 'ifctester' in installed:
                 result["packages_installed"] = True
+
+            # Сравнение с requirements.txt
+            comparison = compare_packages()
+            result["packages_match"] = comparison["match"]
+            result["missing_packages"] = comparison["missing"]
+            result["outdated_packages"] = comparison["outdated"]
+
+            if not comparison["match"]:
+                result["needs_update"] = True
+
         except Exception as e:
             result["errors"].append("Ошибка проверки пакетов: {}".format(str(e)))
     else:
@@ -367,7 +632,8 @@ def check_environment():
     result["is_ready"] = (
         result["venv_exists"] and
         result["packages_installed"] and
-        result["requirements_exists"]
+        result["requirements_exists"] and
+        result["packages_match"]
     )
 
     # Обновляем настройки

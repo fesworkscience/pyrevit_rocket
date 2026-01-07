@@ -1,10 +1,10 @@
-run_counts:
-  "Examples\HelloWorld.dyn": "1"
 categories: []
+last_runs:
+  "Examples\HelloWorld.dyn": "07.01.2026 23:19"
 recent:
   - "Examples\HelloWorld.dyn"
   - "Examples\export_to_pdf.dyn"
-last_runs:
-  "Examples\HelloWorld.dyn": "07.01.2026 00:23"
 scripts_meta: "{}"
+run_counts:
+  "Examples\HelloWorld.dyn": "2"
 favorites: []

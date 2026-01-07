@@ -2,7 +2,7 @@
 === PowerShell autotype script ===
 Script name: HelloWorld
 Searching for Dynamo Player window...
-Found window: 'Проигрыватель Dynamo' after 800ms
+Found window: 'Проигрыватель Dynamo' after 3800ms
 Saved rect: Left=1581, Top=380, Width=801, Height=647
 Activating window...
 Using saved rect: Left=1581, Top=380, Width=801, Height=647
