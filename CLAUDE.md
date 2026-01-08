@@ -2,6 +2,32 @@
 
 pyRevit extension for industrial building automation in Revit.
 
+## РЕЛИЗ (ОБЯЗАТЕЛЬНО!)
+
+**НИКОГДА не создавай теги вручную!** Используй скрипт релиза:
+
+```bash
+# Patch версия (1.0.35 -> 1.0.36) - по умолчанию
+powershell -ExecutionPolicy Bypass -File "release_scripts\release.ps1"
+
+# Minor версия (1.0.35 -> 1.1.0)
+powershell -ExecutionPolicy Bypass -File "release_scripts\release.ps1" -BumpType minor
+
+# Major версия (1.0.35 -> 2.0.0)
+powershell -ExecutionPolicy Bypass -File "release_scripts\release.ps1" -BumpType major
+```
+
+Скрипт автоматически:
+1. Проверяет, что нет незакоммиченных изменений
+2. Определяет последнюю версию из тегов
+3. Увеличивает версию
+4. Обновляет `version.yaml`
+5. Создаёт коммит "Release vX.X.X"
+6. Создаёт тег
+7. Пушит в origin и github
+
+**Перед релизом обязательно закоммить все изменения!**
+
 ## Структура IDS файла (Information Delivery Specification)
 
 IDS файл содержит требования к параметрам IFC элементов.
