@@ -15,6 +15,9 @@ env:
   PYREVIT_VERSION: "4.8.16.24121"
   PYREVIT_URL: "https://github.com/pyrevitlabs/pyRevit/releases/download/v4.8.16.24121/pyRevit_4.8.16.24121_signed.exe"
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
