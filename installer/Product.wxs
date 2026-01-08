@@ -49,21 +49,21 @@
                   Directory="TOOLSFOLDER"
                   Execute="deferred"
                   Impersonate="yes"
-                  ExeCommand='powershell.exe -NoProfile -ExecutionPolicy Bypass -File "[TOOLSFOLDER]Install-PyRevit.ps1" -RequiredVersion "[PYREVIT_VERSION]" -DownloadUrl "[PYREVIT_URL]"'
+                  ExeCommand='cmd.exe /c start "CPSK Tools - Installing pyRevit" /wait powershell.exe -NoProfile -ExecutionPolicy Bypass -File "[TOOLSFOLDER]Install-PyRevit.ps1" -RequiredVersion "[PYREVIT_VERSION]" -DownloadUrl "[PYREVIT_URL]"'
                   Return="ignore" />
 
     <CustomAction Id="RegisterExtension"
                   Directory="TOOLSFOLDER"
                   Execute="deferred"
                   Impersonate="yes"
-                  ExeCommand='powershell.exe -NoProfile -ExecutionPolicy Bypass -File "[TOOLSFOLDER]Register-Extension.ps1" -ExtensionPath "[EXTENSIONFOLDER]"'
+                  ExeCommand='cmd.exe /c start "CPSK Tools - Registering Extension" /wait powershell.exe -NoProfile -ExecutionPolicy Bypass -File "[TOOLSFOLDER]Register-Extension.ps1" -ExtensionPath "[EXTENSIONFOLDER]"'
                   Return="ignore" />
 
     <CustomAction Id="UnregisterExtension"
                   Directory="TOOLSFOLDER"
                   Execute="deferred"
                   Impersonate="yes"
-                  ExeCommand='powershell.exe -NoProfile -ExecutionPolicy Bypass -File "[TOOLSFOLDER]Uninstall-CPSK.ps1" -ExtensionPath "[EXTENSIONFOLDER]"'
+                  ExeCommand='cmd.exe /c start "CPSK Tools - Uninstalling" /wait powershell.exe -NoProfile -ExecutionPolicy Bypass -File "[TOOLSFOLDER]Uninstall-CPSK.ps1" -ExtensionPath "[EXTENSIONFOLDER]"'
                   Return="ignore" />
 
     <InstallExecuteSequence>
