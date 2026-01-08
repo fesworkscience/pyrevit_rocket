@@ -85,9 +85,9 @@ jobs:
               $originalSize = $_.Length
               Write-Host "Minifying: $($_.Name) ($originalSize bytes)"
 
-              # Minify with conservative options (no global rename to avoid breaking imports)
+              # Minify: remove docstrings, debug statements; rename locals (default behavior)
               $tempFile = "$($_.FullName).min"
-              python -m python_minifier $_.FullName --remove-literal-statements --remove-debug --rename-locals -o $tempFile
+              python -m python_minifier $_.FullName --remove-literal-statements --remove-debug -o $tempFile
 
               if (Test-Path $tempFile) {
                 Move-Item $tempFile $_.FullName -Force
