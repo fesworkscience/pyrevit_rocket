@@ -64,20 +64,6 @@ jobs:
             if (Test-Path $pycPath) { Remove-Item $_.FullName -Force }
           }
 
-      - name: Create default icon
-        shell: pwsh
-        run: |
-          if (-not (Test-Path "installer\icon.ico")) {
-            # Download a default icon or create placeholder
-            $iconUrl = "https://raw.githubusercontent.com/pyrevitlabs/pyRevit/master/extensions/pyRevitCore.extension/icon.ico"
-            Invoke-WebRequest -Uri $iconUrl -OutFile "installer\icon.ico" -ErrorAction SilentlyContinue
-            if (-not (Test-Path "installer\icon.ico")) {
-              # Create minimal valid ICO file
-              [byte[]]$ico = @(0,0,1,0,1,0,1,1,0,0,1,0,24,0,48,0,0,0,22,0,0,0,40,0,0,0,1,0,0,0,2,0,0,0,1,0,24,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,255,0,0,0)
-              [System.IO.File]::WriteAllBytes("installer\icon.ico", $ico)
-            }
-          }
-
       - name: Install Inno Setup
         shell: pwsh
         run: |

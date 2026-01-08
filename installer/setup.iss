@@ -17,8 +17,6 @@ Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=lowest
-SetupIconFile=icon.ico
-UninstallDisplayIcon={app}\icon.ico
 DisableDirPage=yes
 DisableReadyPage=no
 
@@ -36,7 +34,6 @@ Source: "build\Install-PyRevit.ps1"; DestDir: "{app}\tools"; Flags: ignoreversio
 Source: "build\Register-Extension.ps1"; DestDir: "{app}\tools"; Flags: ignoreversion
 Source: "build\Uninstall-CPSK.ps1"; DestDir: "{app}\tools"; Flags: ignoreversion
 Source: "build\version.txt"; DestDir: "{app}"; Flags: ignoreversion
-Source: "installer\icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Registry]
 Root: HKCU; Subkey: "Software\CPSK\Tools"; ValueType: string; ValueName: "Version"; ValueData: "{#MyAppVersion}"; Flags: uninsdeletekey
