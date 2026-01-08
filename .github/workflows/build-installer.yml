@@ -111,11 +111,11 @@ jobs:
         shell: pwsh
         run: |
           $version = "${{ steps.version.outputs.VERSION }}"
+          git fetch origin master
+          git checkout master
           "version: $version" | Out-File -FilePath "version.yaml" -Encoding UTF8 -NoNewline
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add version.yaml
           git diff --staged --quiet || git commit -m "Update version.yaml to $version"
-          git push origin HEAD:master
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git master
