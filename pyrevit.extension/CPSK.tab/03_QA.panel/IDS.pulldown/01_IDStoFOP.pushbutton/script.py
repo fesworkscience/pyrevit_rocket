@@ -1,3 +1,4 @@
+#! python3
 # -*- coding: utf-8 -*-
 """
 IDS to FOP - Создание ФОП и IFC Mapping из IDS файла.

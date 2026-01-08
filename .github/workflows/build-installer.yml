@@ -70,37 +70,62 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Minify Python code
+      - name: Check Python 3 syntax
         shell: pwsh
         run: |
-          Write-Host "Installing python-minifier..."
-          pip install python-minifier
+          Write-Host "=== Checking Python 3 syntax ==="
+          $extensionDir = "build\CPSK.extension"
+          $errors = @()
 
-          $libDir = "build\CPSK.extension\lib"
-          Write-Host "=== Minifying Python files in $libDir ==="
-
-          # Files to minify (lib modules)
-          Get-ChildItem "$libDir\*.py" | ForEach-Object {
-            if ($_.Name -ne "__init__.py") {
-              $originalSize = $_.Length
-              Write-Host "Minifying: $($_.Name) ($originalSize bytes)"
-
-              # Minify with Python 2 compatible settings (no transforms that could break IronPython)
-              $tempFile = "$($_.FullName).min"
-              python -m python_minifier $_.FullName --remove-literal-statements --no-remove-annotations --no-hoist-literals --no-rename-locals --no-convert-posargs-to-args -o $tempFile
-
-              if (Test-Path $tempFile) {
-                Move-Item $tempFile $_.FullName -Force
-                $newSize = (Get-Item $_.FullName).Length
-                $reduction = [math]::Round((1 - $newSize / $originalSize) * 100)
-                Write-Host "  [OK] $originalSize -> $newSize bytes (-$reduction%)"
-              } else {
-                Write-Host "  [WARN] Minification failed, keeping original"
-              }
+          # Check all .py files
+          Get-ChildItem -Path $extensionDir -Recurse -Filter "*.py" | ForEach-Object {
+            $result = python -m py_compile $_.FullName 2>&1
+            if ($LASTEXITCODE -ne 0) {
+              $errors += "ERROR in $($_.FullName): $result"
+              Write-Host "[FAIL] $($_.FullName)" -ForegroundColor Red
+            } else {
+              Write-Host "[OK] $($_.Name)"
             }
           }
 
-          Write-Host "=== Minification complete ==="
+          if ($errors.Count -gt 0) {
+            Write-Host ""
+            Write-Host "=== SYNTAX ERRORS ===" -ForegroundColor Red
+            $errors | ForEach-Object { Write-Host $_ -ForegroundColor Red }
+            exit 1
+          }
+
+          Write-Host ""
+          Write-Host "=== All Python files passed syntax check ===" -ForegroundColor Green
+
+      - name: Compile Python to .pyc
+        shell: pwsh
+        run: |
+          $libDir = "build\CPSK.extension\lib"
+          Write-Host "=== Compiling Python files to .pyc in $libDir ==="
+
+          # Compile all .py files in lib to .pyc
+          python -m compileall -b $libDir
+
+          # Remove source .py files (keep only .pyc), except __init__.py
+          Get-ChildItem "$libDir\*.py" | ForEach-Object {
+            $pycFile = $_.FullName -replace '\.py$', '.pyc'
+            if (Test-Path $pycFile) {
+              if ($_.Name -eq "__init__.py") {
+                # Keep __init__.py but also keep .pyc
+                Write-Host "Kept: $($_.Name) (package marker)"
+              } else {
+                Remove-Item $_.FullName -Force
+                Write-Host "Compiled: $($_.Name) -> $($_.Name -replace '\.py$', '.pyc')"
+              }
+            } else {
+              Write-Host "[WARN] Failed to compile: $($_.Name)"
+            }
+          }
+
+          Write-Host ""
+          Write-Host "=== Files in lib after compilation ==="
+          Get-ChildItem $libDir | ForEach-Object { Write-Host "  $($_.Name)" }
 
       - name: Install Inno Setup
         shell: pwsh

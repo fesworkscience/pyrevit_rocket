@@ -1,3 +1,4 @@
+#! python3
 # -*- coding: utf-8 -*-
 """Create roof beams (end gable beams) following truss profile."""
 

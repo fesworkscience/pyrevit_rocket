@@ -1,3 +1,4 @@
+#! python3
 # -*- coding: utf-8 -*-
 """
 SetupEnv - Проверка и установка Python окружения.
