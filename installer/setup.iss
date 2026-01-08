@@ -22,6 +22,9 @@ DisableReadyPage=no
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
+[Messages]
+FinishedLabel=Setup has finished installing [name] on your computer.%n%n%nIMPORTANT: Please restart Revit to activate CPSK Tools.%n%nIf Revit was running during installation, close and reopen it.
+
 [Files]
 Source: "..\build\CPSK.extension\*"; DestDir: "{app}\CPSK.extension"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\build\Install-PyRevit.ps1"; DestDir: "{app}\tools"; Flags: ignoreversion
@@ -42,11 +45,13 @@ var
   ConfigPage: TWizardPage;
   PyRevitStatusLabel: TNewStaticText;
   PluginStatusLabel: TNewStaticText;
+  RevitStatusLabel: TNewStaticText;
   ActionLabel: TNewStaticText;
   ConfigStatusLabel: TNewStaticText;
   ConfigProgressBar: TNewProgressBar;
   PyRevitInstalled: Boolean;
   PluginInstalled: Boolean;
+  RevitRunning: Boolean;
   PluginVersion: String;
   LogFile: String;
 
@@ -61,6 +66,23 @@ end;
 function BoolToStr(B: Boolean): String;
 begin
   if B then Result := 'True' else Result := 'False';
+end;
+
+function IsRevitRunning: Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := False;
+  WriteLog('Checking if Revit is running...');
+  if Exec('tasklist.exe', '/FI "IMAGENAME eq Revit.exe" /NH', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  begin
+    // Check via PowerShell for more reliable detection
+    if Exec('powershell.exe', '-NoProfile -Command "if (Get-Process -Name Revit -ErrorAction SilentlyContinue) { exit 1 } else { exit 0 }"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    begin
+      Result := (ResultCode = 1);
+      WriteLog('Revit running check result: ' + BoolToStr(Result));
+    end;
+  end;
 end;
 
 function IsPyRevitInstalled: Boolean;
@@ -163,10 +185,19 @@ begin
   PluginStatusLabel.AutoSize := False;
   PluginStatusLabel.WordWrap := True;
 
+  RevitStatusLabel := TNewStaticText.Create(CheckPage);
+  RevitStatusLabel.Parent := CheckPage.Surface;
+  RevitStatusLabel.Left := 20;
+  RevitStatusLabel.Top := 140;
+  RevitStatusLabel.Width := CheckPage.SurfaceWidth - 40;
+  RevitStatusLabel.Height := 40;
+  RevitStatusLabel.AutoSize := False;
+  RevitStatusLabel.WordWrap := True;
+
   ActionLabel := TNewStaticText.Create(CheckPage);
   ActionLabel.Parent := CheckPage.Surface;
   ActionLabel.Left := 0;
-  ActionLabel.Top := 150;
+  ActionLabel.Top := 190;
   ActionLabel.Width := CheckPage.SurfaceWidth;
   ActionLabel.Height := 60;
   ActionLabel.AutoSize := False;
@@ -217,6 +248,12 @@ begin
       PluginStatusLabel.Caption := '[OK] CPSK Tools v' + PluginVersion + ' is installed - will be updated to v{#MyAppVersion}'
     else
       PluginStatusLabel.Caption := '[!] CPSK Tools is NOT installed - will be installed';
+
+    RevitRunning := IsRevitRunning;
+    if RevitRunning then
+      RevitStatusLabel.Caption := '[!] Revit is RUNNING - please close Revit and restart it after installation'
+    else
+      RevitStatusLabel.Caption := '[OK] Revit is not running';
 
     if not PyRevitInstalled then
       ActionLabel.Caption := 'Click Next to install pyRevit and CPSK Tools. This may take several minutes.'
@@ -300,4 +337,33 @@ begin
   WriteLog('Log file: ' + LogFile);
   WriteLog('Install path: ' + ExpandConstant('{localappdata}\CPSK'));
   Result := True;
+end;
+
+function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoTypeInfo, MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
+begin
+  Result := 'CPSK Tools v{#MyAppVersion} will be installed.' + NewLine + NewLine;
+  if PyRevitInstalled then
+    Result := Result + '- pyRevit: Already installed' + NewLine
+  else
+    Result := Result + '- pyRevit: Will be installed' + NewLine;
+  if PluginInstalled then
+    Result := Result + '- CPSK Tools: Update from v' + PluginVersion + NewLine
+  else
+    Result := Result + '- CPSK Tools: New installation' + NewLine;
+  Result := Result + NewLine + 'Click Install to continue.';
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+  begin
+    WriteLog('=== Post-Install Step ===');
+    if RevitRunning then
+      WriteLog('Revit was running during installation - user needs to restart Revit');
+  end;
+end;
+
+function GetCustomSetupExitCode: Integer;
+begin
+  Result := 0;
 end;
