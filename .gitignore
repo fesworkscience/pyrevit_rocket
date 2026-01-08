@@ -25,6 +25,9 @@ setup_env.log
 **/02_Dynamo.panel/dynamo_scripts/_debug.txt
 
 
+.env
+
+
 rocket-revit-master
 
 # Build artifacts

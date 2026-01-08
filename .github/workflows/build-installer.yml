@@ -138,28 +138,139 @@ jobs:
           path: "CPSK_Tools_*.exe"
           retention-days: 30
 
+      - name: Generate release notes
+        if: startsWith(github.ref, 'refs/tags/')
+        id: release_notes
+        shell: pwsh
+        run: |
+          # Get commits since last tag
+          $lastTag = git describe --tags --abbrev=0 HEAD^ 2>$null
+          if ($lastTag) {
+            $commits = git log --pretty=format:"- %s" "$lastTag..HEAD" --no-merges | Where-Object { $_ -notmatch "Release v" }
+          } else {
+            $commits = git log --pretty=format:"- %s" -10 --no-merges | Where-Object { $_ -notmatch "Release v" }
+          }
+
+          $version = "${{ steps.version.outputs.VERSION }}"
+
+          # Release notes for server (markdown)
+          $serverNotes = "## CPSK Tools v$version`n`n"
+          $serverNotes += "### Изменения`n"
+          if ($commits) {
+            $serverNotes += ($commits -join "`n")
+          } else {
+            $serverNotes += "- Обновление версии"
+          }
+          $serverNotes += "`n`n### Требования`n- Windows 10/11`n- Autodesk Revit 2021-2025"
+          $serverNotes | Out-File -FilePath "release_notes.txt" -Encoding UTF8
+
+          # Release notes for GitHub (with install instructions)
+          $githubNotes = "## CPSK Tools for Revit v$version`n`n"
+          $githubNotes += "### Установка`n"
+          $githubNotes += "1. Скачайте ``CPSK_Tools_v$version.exe```n"
+          $githubNotes += "2. Запустите установщик`n"
+          $githubNotes += "3. Перезапустите Revit`n`n"
+          $githubNotes += "### Изменения`n"
+          if ($commits) {
+            $githubNotes += ($commits -join "`n")
+          } else {
+            $githubNotes += "- Обновление версии"
+          }
+          $githubNotes += "`n`n### Требования`n- Windows 10/11`n- Autodesk Revit 2021-2025"
+          $githubNotes | Out-File -FilePath "github_release_notes.txt" -Encoding UTF8
+
+          Write-Host "Release notes generated"
+
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           name: "CPSK Tools v${{ steps.version.outputs.VERSION }}"
-          body: |
-            ## CPSK Tools for Revit v${{ steps.version.outputs.VERSION }}
-
-            ### Установка
-            1. Скачайте `CPSK_Tools_v${{ steps.version.outputs.VERSION }}.exe`
-            2. Запустите установщик
-            3. Перезапустите Revit
-
-            ### Требования
-            - Windows 10/11
-            - Autodesk Revit 2021-2025
-
-            ### Что нового
-            - Современный установщик с прогресс-баром
-            - Автоматическая установка pyRevit при необходимости
+          body_path: github_release_notes.txt
           files: "CPSK_Tools_*.exe"
           draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get API token
+        if: startsWith(github.ref, 'refs/tags/')
+        id: api_token
+        shell: pwsh
+        run: |
+          $body = @{
+            username = "${{ secrets.RELEASE_API_USERNAME }}"
+            password = "${{ secrets.RELEASE_API_PASSWORD }}"
+          } | ConvertTo-Json
+
+          try {
+            $response = Invoke-RestMethod -Uri "https://api-cpsk-superapp.gip.su/api/rocketrevit/token/" `
+              -Method POST `
+              -ContentType "application/json" `
+              -Body $body
+
+            $token = $response.access
+            if (-not $token) {
+              $token = $response.token
+            }
+
+            if ($token) {
+              echo "API_TOKEN=$token" >> $env:GITHUB_OUTPUT
+              Write-Host "API token obtained successfully"
+            } else {
+              Write-Host "ERROR: No token in response"
+              Write-Host "Response: $($response | ConvertTo-Json)"
+              exit 1
+            }
+          } catch {
+            Write-Host "ERROR: Failed to get API token: $_"
+            exit 1
+          }
+
+      - name: Upload to release server
+        if: startsWith(github.ref, 'refs/tags/') && steps.api_token.outputs.API_TOKEN != ''
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.VERSION }}"
+          $token = "${{ steps.api_token.outputs.API_TOKEN }}"
+          $exeFile = Get-ChildItem -Path "." -Filter "CPSK_Tools_*.exe" | Select-Object -First 1
+
+          if (-not $exeFile) {
+            Write-Host "ERROR: No exe file found"
+            exit 1
+          }
+
+          # Read release notes from file
+          $releaseNotes = Get-Content -Path "release_notes.txt" -Raw -Encoding UTF8
+
+          Write-Host "Uploading $($exeFile.Name) to release server..."
+
+          $headers = @{
+            "Authorization" = "Bearer $token"
+          }
+
+          $form = @{
+            version = $version
+            exe_file = Get-Item $exeFile.FullName
+            release_notes = $releaseNotes
+            git_tag = "v$version"
+            git_commit = "${{ github.sha }}"
+            github_release_url = "https://github.com/${{ github.repository }}/releases/tag/v$version"
+            min_revit_version = "2021"
+            max_revit_version = "2025"
+          }
+
+          try {
+            $response = Invoke-RestMethod -Uri "https://rocket-tools.ru/api/releases/upload/" `
+              -Method POST `
+              -Headers $headers `
+              -Form $form
+
+            Write-Host "Upload successful!"
+            Write-Host "Response: $($response | ConvertTo-Json)"
+          } catch {
+            Write-Host "ERROR: Upload failed: $_"
+            Write-Host "Response: $($_.ErrorDetails.Message)"
+            # Don't fail the build if upload fails - GitHub release is already created
+            Write-Host "WARNING: Server upload failed, but GitHub release was created successfully"
+          }

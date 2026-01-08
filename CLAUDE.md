@@ -28,6 +28,19 @@ powershell -ExecutionPolicy Bypass -File "release_scripts\release.ps1" -BumpType
 
 **Перед релизом обязательно закоммить все изменения!**
 
+### GitHub Secrets для автоматической загрузки на сервер
+
+В GitHub репозитории нужно настроить секреты (Settings → Secrets → Actions):
+
+- `RELEASE_API_USERNAME` - email для API (из .env: USERNAME_APP_GIP_GROUP_SOLUTIONS_SU)
+- `RELEASE_API_PASSWORD` - пароль для API (из .env: PASSWORD_APP_GIP_GROUP_SOLUTIONS_SU)
+
+При релизе GitHub Actions автоматически:
+1. Собирает installer
+2. Создаёт GitHub Release
+3. Получает токен через `/api/rocketrevit/token/`
+4. Загружает exe на `https://rocket-tools.ru/api/releases/upload/`
+
 ## Структура IDS файла (Information Delivery Specification)
 
 IDS файл содержит требования к параметрам IFC элементов.
