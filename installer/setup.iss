@@ -1,7 +1,9 @@
+; CPSK Tools for Revit - Inno Setup Script
+; Encoding: UTF-8 with BOM
+
 #define MyAppName "CPSK Tools for Revit"
 #define MyAppPublisher "CPSK"
 #define MyAppURL "https://rocket-tools.ru"
-#define PyRevitURL "https://pyrevitlabs.io"
 
 [Setup]
 AppId={{E8A5C7B2-4F3D-4E9A-B6C8-1A2B3C4D5E6F}
@@ -21,12 +23,7 @@ DisableDirPage=yes
 DisableReadyPage=no
 
 [Languages]
-Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
-
-[Messages]
-russian.WelcomeLabel2=��������� ���������� {#MyAppName} �� ��� ���������.%n%n��� ������ ��������� pyRevit - ���������� ��������� ��� ���������� Revit.%n%n���� pyRevit �� ����������, �� ����� ���������� ������������ ��.
-english.WelcomeLabel2=This will install {#MyAppName} on your computer.%n%nThis extension requires pyRevit - a free platform for Revit extensions.%n%nIf pyRevit is not installed, it will be installed automatically.
 
 [Files]
 Source: "build\CPSK.extension\*"; DestDir: "{app}\CPSK.extension"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -63,20 +60,18 @@ var
 begin
   ProgressPage.SetText(StatusMsg, '');
   ProgressPage.SetProgress(ProgressPage.ProgressBar.Position + 10, 100);
-
   CmdLine := Format('-NoProfile -ExecutionPolicy Bypass -File "%s" %s', [ScriptPath, Arguments]);
   Result := Exec('powershell.exe', CmdLine, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
 procedure InitializeWizard;
 begin
-  ProgressPage := CreateOutputProgressPage('����������� ���������', '���������, ����������...');
+  ProgressPage := CreateOutputProgressPage('Installing', 'Please wait...');
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 var
-  PyRevitScript, RegisterScript: String;
-  ExtensionPath: String;
+  PyRevitScript, RegisterScript, ExtensionPath: String;
 begin
   if CurStep = ssPostInstall then
   begin
@@ -87,34 +82,32 @@ begin
     RegisterScript := ExpandConstant('{app}\tools\Register-Extension.ps1');
     ExtensionPath := ExpandConstant('{app}\CPSK.extension');
 
-    // Install pyRevit if needed
-    ProgressPage.SetText('��������� ������� pyRevit...', '');
+    ProgressPage.SetText('Checking pyRevit...', '');
     ProgressPage.SetProgress(10, 100);
 
     if not IsPyRevitInstalled then
     begin
-      ProgressPage.SetText('��������� pyRevit...', '��� ����� ������ ��������� �����');
+      ProgressPage.SetText('Installing pyRevit...', 'This may take a few minutes');
       ProgressPage.SetProgress(20, 100);
       RunPowerShellScript(PyRevitScript,
         Format('-RequiredVersion "{#PyRevitVersion}" -DownloadUrl "{#PyRevitUrl}"', []),
-        '��������� pyRevit...');
+        'Installing pyRevit...');
       ProgressPage.SetProgress(70, 100);
     end
     else
     begin
-      ProgressPage.SetText('pyRevit ��� ����������', '');
+      ProgressPage.SetText('pyRevit is already installed', '');
       ProgressPage.SetProgress(50, 100);
     end;
 
-    // Register extension
-    ProgressPage.SetText('����������� ����������...', '');
+    ProgressPage.SetText('Registering extension...', '');
     ProgressPage.SetProgress(80, 100);
     RunPowerShellScript(RegisterScript,
       Format('-ExtensionPath "%s"', [ExtensionPath]),
-      '����������� ���������� � pyRevit...');
+      'Registering extension in pyRevit...');
 
     ProgressPage.SetProgress(100, 100);
-    ProgressPage.SetText('��������� ���������!', '');
+    ProgressPage.SetText('Installation complete!', '');
     Sleep(500);
     ProgressPage.Hide;
   end;
@@ -129,7 +122,6 @@ begin
   begin
     UninstallScript := ExpandConstant('{app}\tools\Uninstall-CPSK.ps1');
     ExtensionPath := ExpandConstant('{app}\CPSK.extension');
-
     Exec('powershell.exe',
       Format('-NoProfile -ExecutionPolicy Bypass -File "%s" -ExtensionPath "%s"',
         [UninstallScript, ExtensionPath]),
