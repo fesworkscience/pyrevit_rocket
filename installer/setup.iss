@@ -58,6 +58,11 @@ begin
   SaveStringToFile(LogFile, S + #13#10, True);
 end;
 
+function BoolToStr(B: Boolean): String;
+begin
+  if B then Result := 'True' else Result := 'False';
+end;
+
 function IsPyRevitInstalled: Boolean;
 var
   Path: String;
@@ -125,11 +130,6 @@ begin
   ConfigProgressBar.Position := Progress;
   WizardForm.Refresh;
   WriteLog('Status: ' + Msg + ' (' + IntToStr(Progress) + '%)');
-end;
-
-function BoolToStr(B: Boolean): String;
-begin
-  if B then Result := 'True' else Result := 'False';
 end;
 
 procedure InitializeWizard;
