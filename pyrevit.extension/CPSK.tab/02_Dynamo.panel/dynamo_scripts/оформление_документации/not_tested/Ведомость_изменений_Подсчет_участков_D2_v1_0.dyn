@@ -1,0 +1,327 @@
+{
+  "Uuid": "c143d653-242a-4785-bd0e-acb9a749786e",
+  "IsCustomNode": false,
+  "Description": "Нужно скопировать спеку из файла задачи, и там же указания как пользоваться https://yougile.com/team/09022a601c33/#HEL-225",
+  "Name": "ENECA-ALL-Ведомость изменений_Подсчет участков-D2-v1.0",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "CoreNodeModels.Input.Filename, CoreNodeModels",
+      "Id": "776b5bb32cf740ac94ff9793e7c9e575",
+      "NodeType": "ExtensionNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "03693f4feaaa4eda9c34e6fa4c385f88",
+          "Name": "",
+          "Description": "Filename",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Возможность выбрать файл в системе и возврат пути к нему",
+      "HintPath": "R:\\2 - Библиотека\\Revit 2021\\3 - Скрипты\\- Общие\\ENECA-ALL-Ведомость изменений_Подсчет участков-D2-v1.0.py",
+      "InputValue": ".\\ENECA-ALL-Ведомость изменений_Подсчет участков-D2-v1.0.py"
+    },
+    {
+      "ConcreteType": "PythonNodeModels.PythonStringNode, PythonNodeModels",
+      "Engine": "IronPython2",
+      "VariableInputPorts": true,
+      "Id": "f844232d27cf405ca9a1b52d06a1c469",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "aba5f84bbeec49d086481f709ef57f39",
+          "Name": "script",
+          "Description": "Сценарий Python для запуска.",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "7cfb3877ee7f41d3a7f6010164bec651",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "bc3522651f8c40beab2a8c3c6fa7e2cf",
+          "Name": "OUT",
+          "Description": "Результат сценария Python",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Выполнение сценария Python из строки."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.BoolSelector, CoreNodeModels",
+      "Id": "27bf6b3828d14a2ba1af443d92b22dfc",
+      "NodeType": "BooleanInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "aaf55d86484c4b2d91b89d5f474fced5",
+          "Name": "",
+          "Description": "Boolean",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Возможность выбора между значениями True и False",
+      "InputValue": true
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.FileObject, CoreNodeModels",
+      "Id": "406636ad8e3f401f9268af3211cbe98f",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "406b77725c464be5bb021d7ec99687f7",
+          "Name": "path",
+          "Description": "Путь к файлу.",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "7d54151f3a1b4ef591062d4b7adeb3a6",
+          "Name": "file",
+          "Description": "Файловый объект",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Создание объекта файла на основе указанного пути"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.ZeroTouch.DSFunction, DynamoCore",
+      "Id": "ca07b2b3f69e4c839b6ad206d1e7a8bd",
+      "NodeType": "FunctionNode",
+      "Inputs": [
+        {
+          "Id": "eee8240f3e6541479893a1c6c986d17e",
+          "Name": "file",
+          "Description": "Файловый объект с текстом для чтения\n\nvar",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "51cf2260894343a690d459c74fb4fd85",
+          "Name": "string",
+          "Description": "Содержимое текстового файла.",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "FunctionSignature": "DSCore.IO.FileSystem.ReadText@var",
+      "Replication": "Auto",
+      "Description": "Чтение текстового файла с выводом содержимого в виде строки.\n\nFileSystem.ReadText (file: var): string"
+    },
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "#! /usr/bin/env python\r\n# -*- coding: utf-8 -*-\r\n\r\nimport itertools\r\nimport clr\r\nclr.AddReference('ProtoGeometry')\r\nfrom Autodesk.DesignScript.Geometry import *\r\n#Введенные в этом узле данные сохраняется в виде списка в переменных IN.\r\n\r\nclr .AddReference (\"RevitAPI\")\r\nimport Autodesk \r\nfrom Autodesk .Revit .DB import *\r\n\r\nclr.AddReference('RevitNodes')\r\nimport Revit\r\nclr.ImportExtensions(Revit.Elements)\r\n\r\nclr.AddReference('RevitServices')\r\nimport RevitServices\r\nfrom RevitServices.Persistence import DocumentManager\r\nfrom RevitServices.Transactions import TransactionManager\r\n\r\n################____________Analytics_script_______################_____Start\r\nimport sys\r\n\r\nsys.path.append(r'C:\\Program Files (x86)\\IronPython 2.7\\Lib')\r\n#импортируем файлы для работы с операционной системой(запись в файл и его сохранение)\r\nimport os\r\n#импортируем файлы для работы с текущим временем\r\nimport datetime\r\n############_____________Name___________################\r\nScriptName = \"ENECA-ALL-Ведомость изменений_Подсчет участков\"\r\n\r\ndoc = DocumentManager.Instance.CurrentDBDocument\r\nuiapp = DocumentManager.Instance.CurrentUIApplication\r\nuidoc = DocumentManager.Instance.CurrentUIDocument\r\napp = uiapp.Application\r\n\r\ntry:\r\n\topenFile = open(r\"R:\\1 - Проекты\\- Координация\\- Аналитика\\scripts-LOG.txt\", 'a+')\r\n\r\n\tdtn = datetime.datetime.now()\r\n\tdtn = str(dtn)#переводим в строчный тип\r\n\tdatatimenow = dtn.split(':')[0]+':'+dtn.split(':')[1]\r\n\tdatatimenow = str(datatimenow)#переводим в строчный тип\r\n\tproject = doc.Title\r\n\r\n\tLine = \"\"\"\\n{}\\t{}\\t{}\\t{}\"\"\".format(ScriptName, datatimenow, app.Username, project)\r\n\t#Записываем и указываем точную кодировку для записываемой информации\r\n\tstringLine = openFile.write(Line.encode('utf-8'))\r\n\t#закрываем, так же можем использовать with или try--finally\r\n\topenFile.close()\r\nexcept:\r\n\t\r\n\topenFile = open(r\"R:\\1 - Проекты\\- Координация\\- Аналитика\\scripts-LOG-Reserve.txt\", 'a+')\r\n\r\n\tdtn = datetime.datetime.now()\r\n\tdtn = str(dtn)#переводим в строчный тип\r\n\tdatatimenow = dtn.split(':')[0]+':'+dtn.split(':')[1]\r\n\tdatatimenow = str(datatimenow)#переводим в строчный тип\r\n\tproject = doc.Title\r\n\r\n\tLine = \"\"\"\\n{}\\t{}\\t{}\\t{}\"\"\".format(ScriptName, datatimenow, app.Username, project)\r\n\t#Записываем и указываем точную кодировку для записываемой информации\r\n\tstringLine = openFile.write(Line.encode('utf-8'))\r\n\t#закрываем, так же можем использовать with или try--finally\r\n\topenFile.close()\r\n\r\n######------------------------------------#####\r\n\r\n\t\r\nOUT = 0",
+      "Engine": "IronPython2",
+      "VariableInputPorts": true,
+      "Id": "d1c0e56b45914d48b4b14c27ebce9615",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "f4d77a555e5a4d78a62ab101ffcba449",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "4299838d07db4e778e5812c594ea8e43",
+          "Name": "OUT",
+          "Description": "Результат сценария Python",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Выполнение встроенного сценария Python."
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "03693f4feaaa4eda9c34e6fa4c385f88",
+      "End": "406b77725c464be5bb021d7ec99687f7",
+      "Id": "9f10ab1434404d47b5f7f65ef0afa12f",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "aaf55d86484c4b2d91b89d5f474fced5",
+      "End": "7cfb3877ee7f41d3a7f6010164bec651",
+      "Id": "5913ffba33754211a3e242b89c58df3c",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "7d54151f3a1b4ef591062d4b7adeb3a6",
+      "End": "eee8240f3e6541479893a1c6c986d17e",
+      "Id": "5b5ba43e49b84f5eab104671ed587b8c",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "51cf2260894343a690d459c74fb4fd85",
+      "End": "aba5f84bbeec49d086481f709ef57f39",
+      "Id": "f4137e913e9443278a7c880e68d55e22",
+      "IsHidden": "False"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "EnableLegacyPolyCurveBehavior": true,
+  "Thumbnail": null,
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "Свойства",
+      "Version": "3.0",
+      "Data": {}
+    },
+    {
+      "ExtensionGuid": "DFBD9CC0-DB40-457A-939E-8C8555555A9D",
+      "Name": "Generative Design",
+      "Version": "7.1",
+      "Data": {}
+    }
+  ],
+  "Author": "None provided",
+  "Linting": {
+    "activeLinter": "Нет",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "3.0.3.7597",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Фоновый просмотр",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "776b5bb32cf740ac94ff9793e7c9e575",
+        "Name": "File Path",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 179.9012389461892,
+        "Y": 293.4677743740298
+      },
+      {
+        "Id": "f844232d27cf405ca9a1b52d06a1c469",
+        "Name": "Python Script From String",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 986.6976500866792,
+        "Y": 216.684296149041
+      },
+      {
+        "Id": "27bf6b3828d14a2ba1af443d92b22dfc",
+        "Name": "Переключатель",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 1092.2729586705152,
+        "Y": 427.6117897308403
+      },
+      {
+        "Id": "406636ad8e3f401f9268af3211cbe98f",
+        "Name": "File From Path",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 646.4537007518015,
+        "Y": 318.35041929062857
+      },
+      {
+        "Id": "ca07b2b3f69e4c839b6ad206d1e7a8bd",
+        "Name": "FileSystem.ReadText",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 785.221691480979,
+        "Y": 316.71718780825756
+      },
+      {
+        "Id": "d1c0e56b45914d48b4b14c27ebce9615",
+        "Name": "Python Script",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 659.0077201709156,
+        "Y": 491.1781840365578
+      }
+    ],
+    "Annotations": [],
+    "X": -689.2541543354496,
+    "Y": 212.95383547412428,
+    "Zoom": 1.0936956485456295
+  }
+}

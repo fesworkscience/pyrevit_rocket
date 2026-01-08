@@ -19,3 +19,10 @@ build/
 # CPSK Settings (user-specific)
 cpsk_settings.yaml
 setup_env.log
+
+# Dynamo panel user data
+**/02_Dynamo.panel/_config.yaml
+**/02_Dynamo.panel/dynamo_scripts/_debug.txt
+
+
+rocket-revit-master

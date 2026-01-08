@@ -14,6 +14,7 @@ import time
 import codecs
 import random
 import re
+import webbrowser
 from datetime import datetime
 
 clr.AddReference('System.Windows.Forms')
@@ -25,20 +26,34 @@ from System.Windows.Forms import (
     Panel, SplitContainer, Orientation, DockStyle,
     FormStartPosition, FormBorderStyle, SelectionMode,
     MessageBox, MessageBoxButtons, MessageBoxIcon, Padding,
-    DialogResult, SendKeys, Clipboard
+    DialogResult, SendKeys, Clipboard, LinkLabel
 )
 from System.Drawing import Point, Size, Color, Font, FontStyle
 
 from pyrevit import revit, forms, script
 
+
+# === УТИЛИТЫ ДЛЯ ССЫЛОК ===
+
+# Паттерн для поиска URL в тексте
+URL_PATTERN = re.compile(r'(https?://[^\s<>"{}|\\^`\[\]]+)')
+
+def find_urls(text):
+    """Найти все URL в тексте и вернуть список (start, length, url)."""
+    if not text:
+        return []
+    results = []
+    for match in URL_PATTERN.finditer(text):
+        results.append((match.start(), len(match.group(0)), match.group(0)))
+    return results
+
+
 # === НАСТРОЙКИ ===
 
-# Путь к папке со скриптами - рядом с CPSK.tab
-SCRIPTS_FOLDER = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
-    "dynamo_scripts"
-)
-CONFIG_FILE = os.path.join(SCRIPTS_FOLDER, "_config.yaml")
+# Путь к папке со скриптами - в папке 02_Dynamo.panel
+PANEL_FOLDER = os.path.dirname(os.path.dirname(__file__))  # 02_Dynamo.panel
+SCRIPTS_FOLDER = os.path.join(PANEL_FOLDER, "dynamo_scripts")
+CONFIG_FILE = os.path.join(PANEL_FOLDER, "_config.yaml")
 MAX_RECENT = 20
 PAGE_SIZE = 100
 
@@ -59,7 +74,7 @@ def parse_yaml(filepath):
     container_type = None  # 'list' или 'dict'
 
     try:
-        with open(filepath, 'r') as f:
+        with codecs.open(filepath, 'r', 'utf-8') as f:
             for line in f:
                 line = line.rstrip()
                 if not line or line.strip().startswith('#'):
@@ -133,7 +148,7 @@ def save_yaml(filepath, data):
             lines.append('{}: "{}"'.format(key, val))
 
     try:
-        with open(filepath, 'w') as f:
+        with codecs.open(filepath, 'w', 'utf-8') as f:
             f.write('\n'.join(lines))
     except:
         pass
@@ -150,7 +165,7 @@ class ScriptScanner:
         self._all_scripts = []
 
     def scan_categories(self):
-        """Получить все папки-категории."""
+        """Получить все папки-категории (только первый уровень)."""
         if not os.path.exists(self.scripts_folder):
             return []
 
@@ -165,8 +180,27 @@ class ScriptScanner:
 
         return sorted(categories)
 
+    def scan_folder_tree(self, folder_path, rel_prefix=""):
+        """Рекурсивно сканировать структуру папок."""
+        result = []
+        try:
+            for name in sorted(os.listdir(folder_path)):
+                path = os.path.join(folder_path, name)
+                if os.path.isdir(path) and not name.startswith('_'):
+                    rel_path = os.path.join(rel_prefix, name) if rel_prefix else name
+                    children = self.scan_folder_tree(path, rel_path)
+                    result.append({
+                        'name': name,
+                        'path': path,
+                        'rel_path': rel_path,
+                        'children': children
+                    })
+        except:
+            pass
+        return result
+
     def get_scripts_in_category(self, category):
-        """Получить все .dyn скрипты в категории."""
+        """Получить .dyn скрипты только в указанной папке (без подпапок)."""
         if category in self._cache:
             cached_time, cached_data = self._cache[category]
             if time.time() - cached_time < 30:
@@ -177,10 +211,11 @@ class ScriptScanner:
 
         if os.path.exists(category_path):
             try:
-                for root, dirs, files in os.walk(category_path):
-                    for f in files:
-                        if f.lower().endswith('.dyn'):
-                            full_path = os.path.join(root, f)
+                # Только файлы в текущей папке, без рекурсии
+                for f in os.listdir(category_path):
+                    if f.lower().endswith('.dyn'):
+                        full_path = os.path.join(category_path, f)
+                        if os.path.isfile(full_path):
                             rel_path = os.path.relpath(full_path, self.scripts_folder)
                             scripts.append({
                                 'name': os.path.splitext(f)[0],
@@ -197,14 +232,32 @@ class ScriptScanner:
         return scripts
 
     def get_all_scripts(self, force_rescan=False):
-        """Получить все скрипты."""
+        """Получить все скрипты из всех папок рекурсивно."""
         if self._all_scripts and not force_rescan:
             return self._all_scripts
 
         all_scripts = []
-        for cat in self.scan_categories():
-            all_scripts.extend(self.get_scripts_in_category(cat))
+        try:
+            # Рекурсивно обходим все папки
+            for root, dirs, files in os.walk(self.scripts_folder):
+                # Пропускаем папки начинающиеся с _
+                dirs[:] = [d for d in dirs if not d.startswith('_')]
 
+                for f in files:
+                    if f.lower().endswith('.dyn'):
+                        full_path = os.path.join(root, f)
+                        rel_path = os.path.relpath(full_path, self.scripts_folder)
+                        category = os.path.dirname(rel_path) or "root"
+                        all_scripts.append({
+                            'name': os.path.splitext(f)[0],
+                            'path': full_path,
+                            'rel_path': rel_path,
+                            'category': category
+                        })
+        except:
+            pass
+
+        all_scripts.sort(key=lambda x: x['name'].lower())
         self._all_scripts = all_scripts
         return all_scripts
 
@@ -233,7 +286,7 @@ class ScriptScanner:
         info = {'description': '', 'author': '', 'name': ''}
 
         try:
-            with open(script_path, 'r') as f:
+            with codecs.open(script_path, 'r', 'utf-8') as f:
                 data = json.load(f)
                 info['description'] = data.get('Description', '')
                 info['author'] = data.get('Author', '')
@@ -423,19 +476,32 @@ def get_synced_folders():
     return synced
 
 
+def get_all_subfolders(folder_path):
+    """Рекурсивно получить все подпапки."""
+    folders = []
+    try:
+        for name in os.listdir(folder_path):
+            subfolder = os.path.join(folder_path, name)
+            if os.path.isdir(subfolder) and not name.startswith('_'):
+                folders.append((name, subfolder))
+                # Рекурсивно добавляем вложенные папки
+                folders.extend(get_all_subfolders(subfolder))
+    except:
+        pass
+    return folders
+
+
 def get_folders_to_sync():
-    """Получить папки, которые нужно синхронизировать."""
+    """Получить папки, которые нужно синхронизировать (включая вложенные)."""
     synced = get_synced_folders()
     to_sync = []
 
-    try:
-        for name in os.listdir(SCRIPTS_FOLDER):
-            subfolder = os.path.join(SCRIPTS_FOLDER, name)
-            if os.path.isdir(subfolder) and not name.startswith('_'):
-                if name not in synced:
-                    to_sync.append((name, subfolder))
-    except:
-        pass
+    # Получаем все подпапки рекурсивно
+    all_folders = get_all_subfolders(SCRIPTS_FOLDER)
+
+    for name, path in all_folders:
+        if name not in synced:
+            to_sync.append((name, path))
 
     return to_sync
 
@@ -1013,7 +1079,7 @@ class DynamoLauncherForm(Form):
         main_split = SplitContainer()
         main_split.Dock = DockStyle.Fill
         main_split.Orientation = Orientation.Vertical
-        main_split.SplitterDistance = 160
+        main_split.SplitterDistance = 80
 
         # === ЛЕВАЯ ПАНЕЛЬ (Категории) ===
         lbl_cat = Label()
@@ -1076,7 +1142,7 @@ class DynamoLauncherForm(Form):
         # Панель описания скрипта
         desc_panel = Panel()
         desc_panel.Dock = DockStyle.Bottom
-        desc_panel.Height = 75
+        desc_panel.Height = 85
         desc_panel.Padding = Padding(3)
 
         # Статистика (автор, запуски)
@@ -1092,10 +1158,11 @@ class DynamoLauncherForm(Form):
         lbl_desc_title.Height = 16
         lbl_desc_title.Font = Font(lbl_desc_title.Font, FontStyle.Bold)
 
-        self.lbl_description = Label()
+        self.lbl_description = LinkLabel()
         self.lbl_description.Dock = DockStyle.Fill
         self.lbl_description.Text = ""
         self.lbl_description.ForeColor = Color.DarkGray
+        self.lbl_description.LinkClicked += self.on_link_clicked
 
         desc_panel.Controls.Add(self.lbl_description)
         desc_panel.Controls.Add(lbl_desc_title)
@@ -1132,16 +1199,25 @@ class DynamoLauncherForm(Form):
         fav_node.Tag = "__favorites__"
         self.tree_categories.Nodes.Add(fav_node)
 
-        # Папки-категории
-        categories = self.scanner.scan_categories()
-        for cat in categories:
-            node = TreeNode(cat)
-            node.Tag = cat
-            self.tree_categories.Nodes.Add(node)
+        # Папки-категории с вложенной структурой
+        folder_tree = self.scanner.scan_folder_tree(SCRIPTS_FOLDER)
+        self._add_folder_nodes(self.tree_categories.Nodes, folder_tree)
+
+        # Развернуть все узлы
+        self.tree_categories.ExpandAll()
 
         # Выбрать "Все скрипты"
         if self.tree_categories.Nodes.Count > 0:
             self.tree_categories.SelectedNode = self.tree_categories.Nodes[0]
+
+    def _add_folder_nodes(self, parent_nodes, folders):
+        """Рекурсивно добавить узлы папок в дерево."""
+        for folder in folders:
+            node = TreeNode(folder['name'])
+            node.Tag = folder['rel_path']
+            parent_nodes.Add(node)
+            if folder['children']:
+                self._add_folder_nodes(node.Nodes, folder['children'])
 
     def on_category_selected(self, sender, args):
         """Выбрана категория."""
@@ -1187,6 +1263,7 @@ class DynamoLauncherForm(Form):
         self.btn_run.Enabled = False
         self.btn_favorite.Enabled = False
         self.lbl_description.Text = ""
+        self.lbl_description.Links.Clear()
         self.lbl_stats.Text = ""
         if not self.folders_synced:
             self.lbl_info.Text = "Сначала синхронизируйте папки!"
@@ -1237,6 +1314,7 @@ class DynamoLauncherForm(Form):
             self.btn_run.Enabled = False
             self.btn_favorite.Enabled = False
             self.lbl_description.Text = ""
+            self.lbl_description.Links.Clear()
             self.lbl_stats.Text = ""
             if not self.folders_synced:
                 self.lbl_info.Text = "Сначала синхронизируйте папки!"
@@ -1273,9 +1351,15 @@ class DynamoLauncherForm(Form):
             if desc:
                 self.lbl_description.Text = desc
                 self.lbl_description.ForeColor = Color.Black
+                # Настраиваем ссылки
+                self.lbl_description.Links.Clear()
+                urls = find_urls(desc)
+                for start, length, url in urls:
+                    link = self.lbl_description.Links.Add(start, length, url)
             else:
                 self.lbl_description.Text = "Нет описания"
                 self.lbl_description.ForeColor = Color.Gray
+                self.lbl_description.Links.Clear()
 
             # Путь к файлу внизу
             self.lbl_info.Text = rel_path
@@ -1428,6 +1512,15 @@ class DynamoLauncherForm(Form):
         """Обновить список."""
         self.scanner.clear_cache()
         self.load_categories()
+
+    def on_link_clicked(self, sender, args):
+        """Открыть ссылку в браузере."""
+        try:
+            url = args.Link.LinkData
+            if url:
+                webbrowser.open(url)
+        except Exception as e:
+            output.print_md("Ошибка открытия ссылки: {}".format(str(e)))
 
 
 # === MAIN ===

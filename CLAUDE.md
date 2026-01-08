@@ -107,12 +107,6 @@ File "...\pyrevit\telemetry\record.py", line 35, in __setattr__
 ```
 pyrevit.extension/
 ├── extension.json           # Extension metadata (CPython 3)
-├── dynamo_scripts/          # Dynamo scripts library (1000+ supported)
-│   ├── _config.yaml         # Favorites, recent, metadata
-│   ├── Examples/            # Category folders
-│   ├── Columns/
-│   ├── Foundations/
-│   └── ...
 ├── CPSK.tab/                 # Main ribbon tab
 │   ├── Columns.panel/        # Column/grid tools
 │   │   ├── CreateColumns.pushbutton/
@@ -122,7 +116,12 @@ pyrevit.extension/
 │   │   ├── CreateTruss.pushbutton/
 │   │   ├── CreateCapitals.pushbutton/
 │   │   └── CreateRoofBeams.pushbutton/
-│   ├── Dynamo.panel/         # Dynamo script launcher
+│   ├── 02_Dynamo.panel/      # Dynamo script launcher
+│   │   ├── _config.yaml      # User config (recent, favorites) - в .gitignore
+│   │   ├── dynamo_scripts/   # Dynamo scripts library (1000+ supported)
+│   │   │   ├── Examples/     # Category folders
+│   │   │   ├── KM_Documentation/
+│   │   │   └── ...
 │   │   └── RunScript.pushbutton/
 │   ├── Geometry.panel/       # Geometry utilities
 │   │   └── BoundingBox.pushbutton/
@@ -182,19 +181,20 @@ Scalable system for managing 1000+ Dynamo scripts.
 ### Folder Structure
 
 ```
-dynamo_scripts/
-├── _config.yaml       # System config (recent, favorites)
-├── Columns/           # Category folder
-│   ├── Create_Columns.dyn
-│   └── Modify_Columns.dyn
-├── Foundations/
-├── Documentation/
-└── Export/
+CPSK.tab/02_Dynamo.panel/
+├── _config.yaml           # User config (recent, favorites) - в .gitignore
+├── dynamo_scripts/        # Скрипты Dynamo
+│   ├── Examples/          # Category folder
+│   │   └── HelloWorld.dyn
+│   ├── KM_Documentation/  # Another category
+│   │   └── create_km_documentation.dyn
+│   └── ...
+└── RunScript.pushbutton/  # Кнопка запуска
 ```
 
 ### Adding Scripts
 
-1. Create category folder in `dynamo_scripts/`
+1. Create category folder in `02_Dynamo.panel/dynamo_scripts/`
 2. Add `.dyn` files to category folder
 3. Scripts auto-appear in launcher
 
@@ -450,6 +450,62 @@ with codecs.open(path, 'r', 'utf-8') as f:  # OK
     content = f.read()
 # НЕ: open(path, 'r', encoding='utf-8')  # ERROR
 ```
+
+## Работа с кодировкой UTF-8 (КРИТИЧНО!)
+
+IronPython 2.7 НЕ поддерживает параметр `encoding` в стандартной функции `open()`.
+Это приводит к кракозябрам при чтении файлов с кириллицей или другими Unicode символами.
+
+### ПРАВИЛО: Всегда используй `codecs.open()` для текстовых файлов!
+
+```python
+import codecs
+
+# ПРАВИЛЬНО - чтение с кодировкой
+with codecs.open(path, 'r', 'utf-8') as f:
+    content = f.read()
+
+# ПРАВИЛЬНО - запись с кодировкой
+with codecs.open(path, 'w', 'utf-8') as f:
+    f.write(content)
+
+# НЕПРАВИЛЬНО - вызовет ошибку в IronPython!
+with open(path, 'r', encoding='utf-8') as f:  # ERROR!
+    content = f.read()
+
+# НЕПРАВИЛЬНО - кракозябры при чтении кириллицы!
+with open(path, 'r') as f:  # Кракозябры!
+    content = f.read()
+```
+
+### Типичные случаи, требующие codecs.open():
+
+1. **JSON файлы с кириллицей** (например, .dyn файлы Dynamo):
+```python
+import codecs
+import json
+
+with codecs.open(dyn_path, 'r', 'utf-8') as f:
+    data = json.load(f)
+description = data.get('Description', '')  # Корректная кириллица
+```
+
+2. **YAML/XML конфигурации**:
+```python
+with codecs.open(config_path, 'r', 'utf-8') as f:
+    content = f.read()
+```
+
+3. **Любые текстовые файлы с не-ASCII символами**:
+```python
+with codecs.open(txt_path, 'r', 'utf-8') as f:
+    lines = f.readlines()
+```
+
+### Признаки проблемы с кодировкой:
+- Кракозябры вместо кириллицы: `ÐŸÑ€Ð¸Ð²ÐµÑ‚` вместо `Привет`
+- `UnicodeDecodeError` при чтении файла
+- Пустые или искажённые строки в UI
 
 ## WinForms в pyRevit (КРИТИЧНО!)
 

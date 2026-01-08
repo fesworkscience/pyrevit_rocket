@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """Decode IFC PropertySet names."""
 import re
+import codecs
+import os
 
 def decode_ifc_hex(hex_part):
     """Decode hex-encoded Unicode."""
@@ -13,8 +15,13 @@ def decode_ifc_hex(hex_part):
 
 # Read IFC file
 ifc_path = r'C:\Users\feduloves\Documents\web\rhino_cpsk\pyrevit.extension\CPSK.tab\QA.panel\IDS.pulldown\06_IDSChecker.pushbutton\2.ifc'
-with open(ifc_path, 'r', encoding='utf-8', errors='ignore') as f:
-    content = f.read()
+try:
+    with codecs.open(ifc_path, 'r', 'utf-8') as f:
+        content = f.read()
+except UnicodeDecodeError:
+    # Fallback: read as latin-1 (accepts any byte)
+    with codecs.open(ifc_path, 'r', 'latin-1') as f:
+        content = f.read()
 
 # Find all IFCPROPERTYSET and extract names
 pset_pattern = r"IFCPROPERTYSET\s*\([^,]+,[^,]+,'([^']+)'"
@@ -35,9 +42,6 @@ for name in matches:
         decoded_names.add(decoded)
     else:
         decoded_names.add(name)
-
-import codecs
-import os
 
 # Save to file with UTF-8
 script_dir = os.path.dirname(os.path.abspath(__file__))

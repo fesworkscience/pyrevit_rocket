@@ -13,6 +13,7 @@ pyRevit Universal Code Checker
     - type hints (предупреждение)
     - subprocess timeout (не поддерживается)
     - open() с encoding (использовать codecs)
+    - open() без codecs для текстовых файлов (кракозябры!)
     - Application.Run() (использовать ShowDialog())
     - async/await (не поддерживается)
     - yield from (не поддерживается)
@@ -83,6 +84,7 @@ class PyRevitChecker:
         self.check_type_hints(lines)
         self.check_subprocess_timeout(lines)
         self.check_open_encoding(lines)
+        self.check_open_without_codecs(lines)
         self.check_application_run(lines)
         self.check_async_await(lines)
         self.check_yield_from(lines)
@@ -140,6 +142,28 @@ class PyRevitChecker:
                 self.errors.append(
                     "Строка {}: open(encoding=) не поддерживается. Используйте codecs.open().".format(i)
                 )
+
+    def check_open_without_codecs(self, lines):
+        """Проверить open() в текстовом режиме без codecs (кракозябры!)."""
+        for i, line in enumerate(lines, 1):
+            code_part = line.split('#')[0]
+            # Пропускаем строки с codecs.open
+            if 'codecs.open' in code_part:
+                continue
+            # Пропускаем webbrowser.open(), os.open() и другие не-файловые open()
+            if 'webbrowser.open' in code_part or 'os.open' in code_part:
+                continue
+            # Ищем open() в текстовом режиме: open(path, 'r'), open(path, 'w'), open(path)
+            # НЕ ловим бинарный режим: 'rb', 'wb', 'ab'
+            # Паттерн: open(..., 'r'...) или open(..., 'w'...) или open(...) без режима
+            match = re.search(r'\bopen\s*\(\s*[^,)]+(?:\s*,\s*[\'"]([rwax][+]?)[\'"])?', code_part)
+            if match:
+                mode = match.group(1)
+                # Если режим не указан или текстовый (r, w, a, x без b)
+                if mode is None or 'b' not in mode:
+                    self.warnings.append(
+                        "Строка {}: open() без codecs может вызвать кракозябры. Используйте codecs.open(path, 'r', 'utf-8').".format(i)
+                    )
 
     def check_application_run(self, lines):
         """Проверить Application.Run() (использовать ShowDialog())."""
