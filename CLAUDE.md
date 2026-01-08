@@ -39,7 +39,7 @@ powershell -ExecutionPolicy Bypass -File "release_scripts\release.ps1" -BumpType
 1. Собирает installer
 2. Создаёт GitHub Release
 3. Получает токен через `/api/rocketrevit/token/`
-4. Загружает exe на `https://rocket-tools.ru/api/releases/upload/`
+4. Загружает exe на `https://rocket-tools.ru/api/rocketrevit/releases/upload/`
 
 ## Структура IDS файла (Information Delivery Specification)
 

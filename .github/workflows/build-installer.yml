@@ -261,7 +261,7 @@ jobs:
           }
 
           try {
-            $response = Invoke-RestMethod -Uri "https://rocket-tools.ru/api/releases/upload/" `
+            $response = Invoke-RestMethod -Uri "https://rocket-tools.ru/api/rocketrevit/releases/upload/" `
               -Method POST `
               -Headers $headers `
               -Form $form
