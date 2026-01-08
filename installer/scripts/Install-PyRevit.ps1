@@ -60,6 +60,10 @@ Write-Log "Installed: $($pyrevitInfo.Installed), Current version: $($pyrevitInfo
 $markerFile = "$env:LOCALAPPDATA\CPSK\pyrevit_installed_by_cpsk.marker"
 
 if ($pyrevitInfo.Installed) {
+    if ($pyrevitInfo.Version -eq "unknown" -or [string]::IsNullOrEmpty($pyrevitInfo.Version)) {
+        Write-Log "pyRevit is installed (version unknown) - skipping installation"
+        exit 0
+    }
     $comparison = Compare-Versions -Current $pyrevitInfo.Version -Required $RequiredVersion
     if ($comparison -ge 0) {
         Write-Log "pyRevit version $($pyrevitInfo.Version) is same or newer - skipping installation"

@@ -14,6 +14,7 @@ import codecs
 # Добавляем lib в путь
 SCRIPT_DIR = os.path.dirname(__file__)
 EXTENSION_DIR = os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))
+REPO_DIR = os.path.dirname(EXTENSION_DIR)  # Корень репозитория
 LIB_DIR = os.path.join(EXTENSION_DIR, "lib")
 if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
@@ -27,13 +28,18 @@ GITHUB_API_URL = "https://api.github.com/repos/{}/{}/releases/latest".format(GIT
 
 
 def get_current_version():
-    """Получить текущую версию из extension.json."""
-    extension_json = os.path.join(EXTENSION_DIR, "extension.json")
+    """Получить текущую версию из version.yaml."""
+    version_file = os.path.join(REPO_DIR, "version.yaml")
     try:
-        with codecs.open(extension_json, 'r', 'utf-8') as f:
-            data = json.load(f)
-            return data.get("version", "0.0.0")
-    except Exception as e:
+        with codecs.open(version_file, 'r', 'utf-8') as f:
+            content = f.read()
+            # Простой парсинг YAML: version: 1.0.5
+            for line in content.split('\n'):
+                line = line.strip()
+                if line.startswith('version:'):
+                    return line.split(':', 1)[1].strip()
+        return "0.0.0"
+    except Exception:
         return "0.0.0"
 
 
