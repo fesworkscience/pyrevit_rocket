@@ -28,7 +28,24 @@ from System.Drawing import Point, Size, Color, Font, FontStyle
 
 from pyrevit import script, forms
 
-from cpsk_notify import show_error, show_info, show_success, show_confirm
+from cpsk_notify import show_error, show_info, show_success, show_confirm, show_toast
+
+# === Проверка движка pyRevit ===
+# CPSK Tools требует IronPython 2.7
+import platform
+_engine_name = platform.python_implementation()
+_engine_version = sys.version.split()[0]
+
+if _engine_name != "IronPython" or not _engine_version.startswith("2.7"):
+    show_toast(
+        "Неверный движок pyRevit",
+        "CPSK Tools требует IronPython 2.7!\n"
+        "Текущий: {} {}\n\n"
+        "Откройте pyRevit Settings -> Engines\n"
+        "и выберите IronPython 2 Engine.".format(_engine_name, _engine_version),
+        notification_type="warning",
+        auto_close=15
+    )
 
 # Добавляем lib в путь
 SCRIPT_DIR = os.path.dirname(__file__)
