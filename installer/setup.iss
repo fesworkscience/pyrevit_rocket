@@ -1,6 +1,3 @@
-; CPSK Tools for Revit - Inno Setup Script
-; Encoding: UTF-8 with BOM
-
 #define MyAppName "CPSK Tools for Revit"
 #define MyAppPublisher "CPSK"
 #define MyAppURL "https://rocket-tools.ru"
@@ -77,21 +74,16 @@ begin
   begin
     ProgressPage.Show;
     ProgressPage.SetProgress(0, 100);
-
     PyRevitScript := ExpandConstant('{app}\tools\Install-PyRevit.ps1');
     RegisterScript := ExpandConstant('{app}\tools\Register-Extension.ps1');
     ExtensionPath := ExpandConstant('{app}\CPSK.extension');
-
     ProgressPage.SetText('Checking pyRevit...', '');
     ProgressPage.SetProgress(10, 100);
-
     if not IsPyRevitInstalled then
     begin
       ProgressPage.SetText('Installing pyRevit...', 'This may take a few minutes');
       ProgressPage.SetProgress(20, 100);
-      RunPowerShellScript(PyRevitScript,
-        Format('-RequiredVersion "{#PyRevitVersion}" -DownloadUrl "{#PyRevitUrl}"', []),
-        'Installing pyRevit...');
+      RunPowerShellScript(PyRevitScript, Format('-RequiredVersion "{#PyRevitVersion}" -DownloadUrl "{#PyRevitUrl}"', []), 'Installing pyRevit...');
       ProgressPage.SetProgress(70, 100);
     end
     else
@@ -99,13 +91,9 @@ begin
       ProgressPage.SetText('pyRevit is already installed', '');
       ProgressPage.SetProgress(50, 100);
     end;
-
     ProgressPage.SetText('Registering extension...', '');
     ProgressPage.SetProgress(80, 100);
-    RunPowerShellScript(RegisterScript,
-      Format('-ExtensionPath "%s"', [ExtensionPath]),
-      'Registering extension in pyRevit...');
-
+    RunPowerShellScript(RegisterScript, Format('-ExtensionPath "%s"', [ExtensionPath]), 'Registering extension...');
     ProgressPage.SetProgress(100, 100);
     ProgressPage.SetText('Installation complete!', '');
     Sleep(500);
@@ -122,10 +110,7 @@ begin
   begin
     UninstallScript := ExpandConstant('{app}\tools\Uninstall-CPSK.ps1');
     ExtensionPath := ExpandConstant('{app}\CPSK.extension');
-    Exec('powershell.exe',
-      Format('-NoProfile -ExecutionPolicy Bypass -File "%s" -ExtensionPath "%s"',
-        [UninstallScript, ExtensionPath]),
-      '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Exec('powershell.exe', Format('-NoProfile -ExecutionPolicy Bypass -File "%s" -ExtensionPath "%s"', [UninstallScript, ExtensionPath]), '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   end;
 end;
 
