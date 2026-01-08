@@ -48,6 +48,9 @@ jobs:
           Copy-Item -Path "pyrevit.extension" -Destination "build\CPSK.extension" -Recurse
           Copy-Item -Path "installer\scripts\*" -Destination "build\" -Force
           "${{ steps.version.outputs.VERSION }}" | Out-File -FilePath "build\version.txt" -Encoding UTF8 -NoNewline
+          # Copy requirements.txt and version.yaml to extension root
+          Copy-Item -Path "requirements.txt" -Destination "build\CPSK.extension\" -Force
+          Copy-Item -Path "version.yaml" -Destination "build\CPSK.extension\" -Force
 
       - name: Remove dev tools from build
         shell: pwsh

@@ -38,3 +38,5 @@ installer/files.wxs
 *.log
 CPSK_Install.log
 CPSK_Uninstall.log
+
+nul
