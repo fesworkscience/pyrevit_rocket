@@ -79,6 +79,9 @@ jobs:
           $libDir = "build\CPSK.extension\lib"
           Write-Host "=== Minifying Python files in $libDir ==="
 
+          # Encoding declaration required for IronPython with non-ASCII characters
+          $encodingDecl = "# -*- coding: utf-8 -*-`n"
+
           # Files to minify (lib modules)
           Get-ChildItem "$libDir\*.py" | ForEach-Object {
             if ($_.Name -ne "__init__.py") {
@@ -90,7 +93,12 @@ jobs:
               python -m python_minifier $_.FullName --remove-literal-statements --no-remove-annotations --no-hoist-literals --no-rename-locals --no-convert-posargs-to-args -o $tempFile
 
               if (Test-Path $tempFile) {
-                Move-Item $tempFile $_.FullName -Force
+                # Add encoding declaration back (minifier removes comments)
+                $content = Get-Content $tempFile -Raw -Encoding UTF8
+                $content = $encodingDecl + $content
+                [System.IO.File]::WriteAllText($_.FullName, $content, [System.Text.UTF8Encoding]::new($false))
+                Remove-Item $tempFile -Force
+
                 $newSize = (Get-Item $_.FullName).Length
                 $reduction = [math]::Round((1 - $newSize / $originalSize) * 100)
                 Write-Host "  [OK] $originalSize -> $newSize bytes (-$reduction%)"
