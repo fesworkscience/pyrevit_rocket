@@ -24,6 +24,7 @@ pyRevit Universal Code Checker
     - отсутствие проверки авторизации require_auth() в скриптах кнопок
     - использование MessageBox.Show или forms.alert (использовать cpsk_notify)
     - использование output.print_md для ошибок (использовать cpsk_notify)
+    - отсутствие icon.png в папках .pushbutton и .pulldown
 """
 
 import sys
@@ -99,6 +100,7 @@ class PyRevitChecker:
         self.check_config_usage(lines, content)
         self.check_require_auth(lines, content)
         self.check_notification_usage(lines, content)
+        self.check_icon_exists()
 
         return len(self.errors) == 0
 
@@ -424,6 +426,30 @@ class PyRevitChecker:
                             "Строка {}: output.print_md для ошибок запрещён. Используйте cpsk_notify.show_error()".format(i)
                         )
                         break
+
+    def check_icon_exists(self):
+        """Проверить наличие icon.png в папках .pushbutton и .pulldown."""
+        if not self.current_file:
+            return
+
+        filepath = self.current_file
+        filename = os.path.basename(filepath)
+        parent_dir = os.path.dirname(filepath)
+        parent_name = os.path.basename(parent_dir)
+
+        # Проверяем только script.py в .pushbutton или .pulldown папках
+        if filename != 'script.py':
+            return
+
+        if not (parent_name.endswith('.pushbutton') or parent_name.endswith('.pulldown')):
+            return
+
+        # Проверяем наличие icon.png
+        icon_path = os.path.join(parent_dir, 'icon.png')
+        if not win_path_exists(icon_path):
+            self.errors.append(
+                "Отсутствует icon.png в папке {}".format(parent_name)
+            )
 
     def get_report(self):
         """Получить отчет."""
