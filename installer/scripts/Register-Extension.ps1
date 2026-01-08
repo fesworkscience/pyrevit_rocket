@@ -104,13 +104,27 @@ try {
         Write-Log "Created [core] section"
     }
 
+    # Helper function to normalize path (convert all slashes to forward, remove doubles)
+    function Normalize-Path { param([string]$Path)
+        # Replace backslashes with forward slashes, then collapse multiple slashes
+        $normalized = $Path -replace '[/\\]+', '/'
+        return $normalized.TrimEnd('/')
+    }
+
     # Parse current extensions
     $currentExtensions = @()
     if ($config["core"].ContainsKey("userextensions")) {
         $extensionsStr = $config["core"]["userextensions"]
         Write-Log "Current userextensions value: $extensionsStr"
         if ($extensionsStr -match '^\[(.+)\]$') {
-            $currentExtensions = $matches[1] -split ',' | ForEach-Object { $_.Trim().Trim('"').Trim("'") } | Where-Object { $_ -ne "" }
+            $innerContent = $matches[1]
+            # Split by comma, trim quotes and whitespace, normalize paths
+            $currentExtensions = $innerContent -split ',' | ForEach-Object {
+                $path = $_.Trim().Trim('"').Trim("'")
+                if ($path -ne "") {
+                    Normalize-Path $path
+                }
+            } | Where-Object { $_ -ne $null -and $_ -ne "" }
             Write-Log "Parsed extensions:"
             foreach ($ext in $currentExtensions) {
                 Write-Log "  - $ext"
@@ -122,14 +136,13 @@ try {
     Write-Log ""
 
     # Check if already registered
-    $normalizedNewPath = $extensionParentPath.Replace('\', '/').TrimEnd('/')
+    $normalizedNewPath = Normalize-Path $extensionParentPath
     Write-Log "Normalized path to register: $normalizedNewPath"
 
     $alreadyRegistered = $false
     foreach ($existingPath in $currentExtensions) {
-        $normalizedExisting = $existingPath.Replace('\', '/').TrimEnd('/')
-        Write-Log "  Comparing with: $normalizedExisting"
-        if ($normalizedExisting -eq $normalizedNewPath) {
+        Write-Log "  Comparing with: $existingPath"
+        if ($existingPath -eq $normalizedNewPath) {
             $alreadyRegistered = $true
             Write-Log "  [MATCH] Already registered!"
             break
@@ -140,8 +153,12 @@ try {
     # Register if needed
     if (-not $alreadyRegistered) {
         Write-Log "Registering new extension path..."
-        $currentExtensions += $extensionParentPath
-        $pathsFormatted = $currentExtensions | ForEach-Object { '"' + $_.Replace('\', '/') + '"' }
+        $currentExtensions += $normalizedNewPath
+        # Format each path with quotes
+        $pathsFormatted = @()
+        foreach ($p in $currentExtensions) {
+            $pathsFormatted += "`"$p`""
+        }
         $newValue = "[" + ($pathsFormatted -join ", ") + "]"
         $config["core"]["userextensions"] = $newValue
         Write-Log "New userextensions value: $newValue"

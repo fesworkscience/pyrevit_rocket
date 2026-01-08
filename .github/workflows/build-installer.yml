@@ -49,112 +49,21 @@ jobs:
           Copy-Item -Path "installer\scripts\*" -Destination "build\" -Force
           "${{ steps.version.outputs.VERSION }}" | Out-File -FilePath "build\version.txt" -Encoding UTF8 -NoNewline
 
-      - name: Download IronPython
+      - name: Remove dev tools from build
         shell: pwsh
         run: |
-          Write-Host "Downloading IronPython 2.7.12..."
-          Invoke-WebRequest -Uri "https://github.com/IronLanguages/ironpython2/releases/download/ipy-2.7.12/IronPython.2.7.12.zip" -OutFile "ironpython.zip"
-          Expand-Archive -Path "ironpython.zip" -DestinationPath "C:\IronPython" -Force
-          Write-Host "IronPython installed to C:\IronPython"
-          Write-Host "Directory structure:"
-          Get-ChildItem "C:\IronPython" -Recurse -Depth 2 | Select-Object FullName
-
-      - name: Compile Python modules to DLL
-        shell: pwsh
-        run: |
-          # Find ipy.exe
-          $ipyPath = Get-ChildItem "C:\IronPython" -Recurse -Filter "ipy.exe" | Select-Object -First 1
-          if (-not $ipyPath) {
-            Write-Host "ERROR: ipy.exe not found!"
-            exit 1
-          }
-          $ipy = $ipyPath.FullName
           $libDir = "build\CPSK.extension\lib"
-
-          Write-Host "=== Compiling Python to DLL ==="
-          Write-Host "IronPython: $ipy"
-          Write-Host "Lib directory: $libDir"
-
-          # Modules to compile (exclude __init__.py and dev tools)
-          $modulesToCompile = @(
-            "cpsk_auth",
-            "cpsk_config",
-            "cpsk_notify",
-            "cpsk_utils",
-            "cpsk_geometry",
-            "cpsk_parameters",
-            "cpsk_selection",
-            "cpsk_dynamo",
-            "ids_checker"
-          )
-
-          Write-Host "Modules to compile:"
-          $modulesToCompile | ForEach-Object { Write-Host "  - $_" }
-
-          # Change to lib directory
-          Push-Location $libDir
-
-          # Compile each module using clr.CompileModules
-          foreach ($module in $modulesToCompile) {
-            $pyFile = "$module.py"
-            $dllFile = "$module.dll"
-
-            if (Test-Path $pyFile) {
-              Write-Host "Compiling $pyFile -> $dllFile"
-
-              # Create compilation script
-              $compileScript = "_compile_temp.py"
-              $compileCode = @(
-                "import clr",
-                "clr.CompileModules('$dllFile', '$pyFile')",
-                "print('Compiled successfully')"
-              ) -join "`n"
-              $compileCode | Out-File -FilePath $compileScript -Encoding UTF8
-
-              # Run compilation
-              $output = & $ipy $compileScript 2>&1
-              Write-Host $output
-              Remove-Item $compileScript -Force -ErrorAction SilentlyContinue
-
-              if (Test-Path $dllFile) {
-                Write-Host "  [OK] Created $dllFile"
-
-                # Create stub .py file that loads from DLL
-                $nl = [Environment]::NewLine
-                $stubLines = @(
-                  "# -*- coding: utf-8 -*-",
-                  "# Auto-generated stub - loads from compiled DLL",
-                  "import clr",
-                  "import os",
-                  "_dll = os.path.join(os.path.dirname(__file__), `"$dllFile`")",
-                  "clr.AddReferenceToFileAndPath(_dll)",
-                  "from $module import *"
-                )
-                $stubContent = $stubLines -join $nl
-
-                # Remove original and create stub
-                Remove-Item $pyFile -Force
-                $stubContent | Out-File -FilePath $pyFile -Encoding UTF8
-                Write-Host "  [OK] Created stub $pyFile"
-              } else {
-                Write-Host "  [WARN] Failed to compile $pyFile, keeping original"
-              }
+          # Remove dev tools not needed in production
+          $devTools = @("pyrevit_checker.py")
+          foreach ($tool in $devTools) {
+            $path = Join-Path $libDir $tool
+            if (Test-Path $path) {
+              Remove-Item $path -Force
+              Write-Host "Removed: $tool (dev tool)"
             }
           }
-
-          # Remove dev tools
-          if (Test-Path "pyrevit_checker.py") {
-            Remove-Item "pyrevit_checker.py" -Force
-            Write-Host "Removed: pyrevit_checker.py (dev tool)"
-          }
-
-          Pop-Location
-
-          Write-Host "=== Compilation complete ==="
           Write-Host "Files in lib:"
-          Get-ChildItem "$libDir" | ForEach-Object {
-            Write-Host "  $($_.Name) ($($_.Length) bytes)"
-          }
+          Get-ChildItem $libDir | ForEach-Object { Write-Host "  $($_.Name)" }
 
       - name: Install Inno Setup
         shell: pwsh
