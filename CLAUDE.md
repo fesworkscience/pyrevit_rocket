@@ -30,16 +30,19 @@ powershell -ExecutionPolicy Bypass -File "release_scripts\release.ps1" -BumpType
 
 ### GitHub Secrets для автоматической загрузки на сервер
 
-В GitHub репозитории нужно настроить секреты (Settings → Secrets → Actions):
+В GitHub репозитории нужно настроить секрет (Settings → Secrets → Actions → Repository secrets):
 
-- `RELEASE_API_USERNAME` - email для API (из .env: USERNAME_APP_GIP_GROUP_SOLUTIONS_SU)
-- `RELEASE_API_PASSWORD` - пароль для API (из .env: PASSWORD_APP_GIP_GROUP_SOLUTIONS_SU)
+- `RELEASE_API_TOKEN` - JWT токен для API
+
+**Получить токен локально:**
+```powershell
+powershell -ExecutionPolicy Bypass -File "get_token.ps1"
+```
 
 При релизе GitHub Actions автоматически:
 1. Собирает installer
 2. Создаёт GitHub Release
-3. Получает токен через `/api/rocketrevit/token/`
-4. Загружает exe на `https://rocket-tools.ru/api/rocketrevit/releases/upload/`
+3. Загружает exe на `https://rocket-tools.ru/api/rocketrevit/releases/upload/`
 
 ## Структура IDS файла (Information Delivery Specification)
 

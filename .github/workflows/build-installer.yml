@@ -193,46 +193,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get API token
-        if: startsWith(github.ref, 'refs/tags/')
-        id: api_token
-        shell: pwsh
-        run: |
-          $body = @{
-            username = "${{ secrets.RELEASE_API_USERNAME }}"
-            password = "${{ secrets.RELEASE_API_PASSWORD }}"
-          } | ConvertTo-Json
-
-          try {
-            $response = Invoke-RestMethod -Uri "https://api-cpsk-superapp.gip.su/api/rocketrevit/token/" `
-              -Method POST `
-              -ContentType "application/json" `
-              -Body $body
-
-            $token = $response.access
-            if (-not $token) {
-              $token = $response.token
-            }
-
-            if ($token) {
-              echo "API_TOKEN=$token" >> $env:GITHUB_OUTPUT
-              Write-Host "API token obtained successfully"
-            } else {
-              Write-Host "ERROR: No token in response"
-              Write-Host "Response: $($response | ConvertTo-Json)"
-              exit 1
-            }
-          } catch {
-            Write-Host "ERROR: Failed to get API token: $_"
-            exit 1
-          }
-
       - name: Upload to release server
-        if: startsWith(github.ref, 'refs/tags/') && steps.api_token.outputs.API_TOKEN != ''
+        if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
         run: |
           $version = "${{ steps.version.outputs.VERSION }}"
-          $token = "${{ steps.api_token.outputs.API_TOKEN }}"
+          $token = "${{ secrets.RELEASE_API_TOKEN }}"
+
+          if (-not $token) {
+            Write-Host "WARNING: RELEASE_API_TOKEN secret not set, skipping upload"
+            exit 0
+          }
           $exeFile = Get-ChildItem -Path "." -Filter "CPSK_Tools_*.exe" | Select-Object -First 1
 
           if (-not $exeFile) {
