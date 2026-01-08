@@ -65,7 +65,6 @@ jobs:
         shell: pwsh
         run: |
           dotnet tool install --global wix --version 4.0.5
-          wix extension add WixToolset.UI.wixext/4.0.5
 
       - name: Generate files.wxs
         shell: pwsh
@@ -123,7 +122,7 @@ jobs:
         shell: pwsh
         run: |
           $version = "${{ steps.version.outputs.VERSION }}"
-          wix build -d Version=$version -d ExtensionSource="build\CPSK.extension" -d PyRevitVersion="${{ env.PYREVIT_VERSION }}" -d PyRevitUrl="${{ env.PYREVIT_URL }}" -ext WixToolset.UI.wixext/4.0.5 -out "CPSK_Tools_v$version.msi" "installer\Product.wxs" "installer\files.wxs"
+          wix build -d Version=$version -d ExtensionSource="build\CPSK.extension" -d PyRevitVersion="${{ env.PYREVIT_VERSION }}" -d PyRevitUrl="${{ env.PYREVIT_URL }}" -out "CPSK_Tools_v$version.msi" "installer\Product.wxs" "installer\files.wxs"
 
       - name: Upload MSI artifact
         uses: actions/upload-artifact@v4

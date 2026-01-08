@@ -14,10 +14,6 @@
 
     <Property Id="PYREVIT_VERSION" Value="$(var.PyRevitVersion)" />
     <Property Id="PYREVIT_URL" Value="$(var.PyRevitUrl)" />
-    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
-
-    <WixVariable Id="WixUILicenseRtf" Value="installer\info.rtf" />
-
     <StandardDirectory Id="LocalAppDataFolder">
       <Directory Id="INSTALLFOLDER" Name="CPSK">
         <Directory Id="EXTENSIONFOLDER" Name="CPSK.extension" />
@@ -81,10 +77,6 @@
       <ComponentGroupRef Id="ToolsComponents" />
       <ComponentGroupRef Id="RegistryComponents" />
     </Feature>
-
-    <UI>
-      <UIRef Id="WixUI_Minimal" />
-    </UI>
 
   </Package>
 </Wix>
