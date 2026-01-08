@@ -66,7 +66,6 @@ def check_and_notify():
                 "Окружение готово к работе. {}".format(result.get("venv_version", "")),
                 details=details,
                 notification_type="success",
-                auto_close=4
             )
         else:
             show_env_warning = get_setting("notifications.show_env_warnings", True)
@@ -93,7 +92,6 @@ def check_and_notify():
                     "{}. Откройте Settings → Окружение".format(error_msg),
                     details=details,
                     notification_type="warning",
-                    auto_close=8
                 )
     except Exception:
         pass  # Игнорируем ошибки
