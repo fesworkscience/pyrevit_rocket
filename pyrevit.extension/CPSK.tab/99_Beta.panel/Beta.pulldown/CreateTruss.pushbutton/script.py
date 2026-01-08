@@ -1,4 +1,3 @@
-#! python3
 # -*- coding: utf-8 -*-
 """Create Warren-type trusses on column grid."""
 

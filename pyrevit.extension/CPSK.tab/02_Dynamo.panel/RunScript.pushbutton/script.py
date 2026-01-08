@@ -1,4 +1,3 @@
-#! python3
 # -*- coding: utf-8 -*-
 """
 Запуск Dynamo скриптов.

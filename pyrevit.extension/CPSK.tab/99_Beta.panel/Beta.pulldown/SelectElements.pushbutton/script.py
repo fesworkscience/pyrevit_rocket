@@ -1,4 +1,3 @@
-#! python3
 # -*- coding: utf-8 -*-
 """Select and count elements by category."""
 

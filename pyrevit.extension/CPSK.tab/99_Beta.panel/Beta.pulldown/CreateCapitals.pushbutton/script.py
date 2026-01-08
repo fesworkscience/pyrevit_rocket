@@ -1,4 +1,3 @@
-#! python3
 # -*- coding: utf-8 -*-
 """Create capitals (bearing plates) on top of columns."""
 

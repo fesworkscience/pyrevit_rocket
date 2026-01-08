@@ -22,9 +22,8 @@ CPSK Authentication Module
 
 import os
 import re
+import urllib2
 import ssl
-import urllib.request
-import urllib.error
 
 # Импортируем cpsk_config для работы с настройками
 from cpsk_config import get_setting, set_setting
@@ -181,22 +180,18 @@ class AuthService(object):
             )
 
             # Создаём запрос
-            request = urllib.request.Request(
-                url,
-                data=request_body.encode('utf-8'),
-                headers={
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'User-Agent': 'CPSK-pyRevit/1.0'
-                }
-            )
+            request = urllib2.Request(url)
+            request.add_header('Content-Type', 'application/json')
+            request.add_header('Accept', 'application/json')
+            request.add_header('User-Agent', 'CPSK-pyRevit/1.0')
+            request.add_data(request_body.encode('utf-8'))
 
             # Выполняем запрос
             ssl_context = _create_ssl_context()
             if ssl_context:
-                response = urllib.request.urlopen(request, context=ssl_context, timeout=30)
+                response = urllib2.urlopen(request, context=ssl_context, timeout=30)
             else:
-                response = urllib.request.urlopen(request, timeout=30)
+                response = urllib2.urlopen(request, timeout=30)
 
             response_code = response.getcode()
             response_body = response.read().decode('utf-8')
@@ -220,7 +215,7 @@ class AuthService(object):
                 )
                 return (False, "Токен не найден в ответе сервера", details)
 
-        except urllib.error.HTTPError as e:
+        except urllib2.HTTPError as e:
             error_body = ""
             try:
                 error_body = e.read().decode('utf-8')
@@ -247,7 +242,7 @@ class AuthService(object):
             else:
                 return (False, "Ошибка сервера: {}".format(e.code), details)
 
-        except urllib.error.URLError as e:
+        except urllib2.URLError as e:
             reason = str(e.reason) if hasattr(e, 'reason') else str(e)
             details = _format_request_details(url, "POST", None, None, None, reason)
 
@@ -375,7 +370,7 @@ class ApiClient(object):
 
         try:
             url = self.base_url + endpoint
-            request = urllib.request.Request(url)
+            request = urllib2.Request(url)
             request.add_header('Accept', 'application/json')
             request.add_header('User-Agent', 'CPSK-pyRevit/1.0')
 
@@ -386,16 +381,17 @@ class ApiClient(object):
 
             ssl_context = _create_ssl_context()
             if ssl_context:
-                response = urllib.request.urlopen(request, context=ssl_context, timeout=60)
+                response = urllib2.urlopen(request, context=ssl_context, timeout=60)
             else:
-                response = urllib.request.urlopen(request, timeout=60)
+                response = urllib2.urlopen(request, timeout=60)
 
             response_body = response.read().decode('utf-8')
 
-            # Возвращаем тело ответа как есть
+            # Простой парсинг JSON (для списков и объектов)
+            # В IronPython нет json модуля, используем регулярки
             return (True, response_body)
 
-        except urllib.error.HTTPError as e:
+        except urllib2.HTTPError as e:
             if e.code == 401:
                 return (False, "Сессия истекла. Войдите заново.")
             elif e.code == 403:
@@ -418,7 +414,7 @@ class ApiClient(object):
             tuple: (success: bool, bytes или error_message: str)
         """
         try:
-            request = urllib.request.Request(url)
+            request = urllib2.Request(url)
             request.add_header('User-Agent', 'CPSK-pyRevit/1.0')
 
             token = AuthService.get_token()
@@ -427,9 +423,9 @@ class ApiClient(object):
 
             ssl_context = _create_ssl_context()
             if ssl_context:
-                response = urllib.request.urlopen(request, context=ssl_context, timeout=300)
+                response = urllib2.urlopen(request, context=ssl_context, timeout=300)
             else:
-                response = urllib.request.urlopen(request, timeout=300)
+                response = urllib2.urlopen(request, timeout=300)
 
             return (True, response.read())
 

@@ -1,4 +1,3 @@
-#! python3
 # -*- coding: utf-8 -*-
 """
 IDS Checker - проверка модели Revit на соответствие требованиям IDS.

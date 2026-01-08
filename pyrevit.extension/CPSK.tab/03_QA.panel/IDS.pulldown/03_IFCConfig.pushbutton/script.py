@@ -1,4 +1,3 @@
-#! python3
 # -*- coding: utf-8 -*-
 """
 IFC Config Manager - управление конфигурациями IFC экспорта.

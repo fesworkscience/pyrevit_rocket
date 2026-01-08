@@ -1,4 +1,3 @@
-#! python3
 # -*- coding: utf-8 -*-
 """
 Проверка обновлений CPSK Tools через GitHub API.

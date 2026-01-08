@@ -1,4 +1,3 @@
-#! python3
 # -*- coding: utf-8 -*-
 """Show bounding box info for selected elements."""
 

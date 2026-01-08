@@ -70,34 +70,6 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Check Python 3 syntax
-        shell: pwsh
-        run: |
-          Write-Host "=== Checking Python 3 syntax ==="
-          $extensionDir = "build\CPSK.extension"
-          $errors = @()
-
-          # Check all .py files
-          Get-ChildItem -Path $extensionDir -Recurse -Filter "*.py" | ForEach-Object {
-            $result = python -m py_compile $_.FullName 2>&1
-            if ($LASTEXITCODE -ne 0) {
-              $errors += "ERROR in $($_.FullName): $result"
-              Write-Host "[FAIL] $($_.FullName)" -ForegroundColor Red
-            } else {
-              Write-Host "[OK] $($_.Name)"
-            }
-          }
-
-          if ($errors.Count -gt 0) {
-            Write-Host ""
-            Write-Host "=== SYNTAX ERRORS ===" -ForegroundColor Red
-            $errors | ForEach-Object { Write-Host $_ -ForegroundColor Red }
-            exit 1
-          }
-
-          Write-Host ""
-          Write-Host "=== All Python files passed syntax check ===" -ForegroundColor Green
-
       - name: Minify Python code
         shell: pwsh
         run: |
@@ -107,13 +79,13 @@ jobs:
           $libDir = "build\CPSK.extension\lib"
           Write-Host "=== Minifying Python files in $libDir ==="
 
-          # Minify lib modules (not __init__.py)
+          # Files to minify (lib modules)
           Get-ChildItem "$libDir\*.py" | ForEach-Object {
             if ($_.Name -ne "__init__.py") {
               $originalSize = $_.Length
               Write-Host "Minifying: $($_.Name) ($originalSize bytes)"
 
-              # Minify with safe settings for pyRevit
+              # Minify with Python 2 compatible settings (no transforms that could break IronPython)
               $tempFile = "$($_.FullName).min"
               python -m python_minifier $_.FullName --remove-literal-statements --no-remove-annotations --no-hoist-literals --no-rename-locals --no-convert-posargs-to-args -o $tempFile
 
@@ -128,7 +100,6 @@ jobs:
             }
           }
 
-          Write-Host ""
           Write-Host "=== Minification complete ==="
 
       - name: Install Inno Setup

@@ -1,4 +1,3 @@
-#! python3
 # -*- coding: utf-8 -*-
 """Create structural columns on grid intersections."""
 
