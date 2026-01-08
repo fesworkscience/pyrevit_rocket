@@ -56,3 +56,5 @@ git push github "v$newVersion"
 
 Write-Host ""
 Write-Host "Released v$newVersion" -ForegroundColor Green
+Write-Host ""
+Write-Host "Build status: https://github.com/fesworkscience/pyrevit_rocket/actions" -ForegroundColor Cyan

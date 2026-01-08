@@ -102,15 +102,18 @@ jobs:
                 Write-Host "  [OK] Created $dllFile"
 
                 # Create stub .py file that loads from DLL
-                $stubContent = @"
-# -*- coding: utf-8 -*-
-# Auto-generated stub - loads from compiled DLL
-import clr
-import os
-_dll = os.path.join(os.path.dirname(__file__), "$dllFile")
-clr.AddReferenceToFileAndPath(_dll)
-from $module import *
-"@
+                $nl = [Environment]::NewLine
+                $stubLines = @(
+                  "# -*- coding: utf-8 -*-",
+                  "# Auto-generated stub - loads from compiled DLL",
+                  "import clr",
+                  "import os",
+                  "_dll = os.path.join(os.path.dirname(__file__), `"$dllFile`")",
+                  "clr.AddReferenceToFileAndPath(_dll)",
+                  "from $module import *"
+                )
+                $stubContent = $stubLines -join $nl
+
                 # Remove original and create stub
                 Remove-Item $pyFile -Force
                 $stubContent | Out-File -FilePath $pyFile -Encoding UTF8
