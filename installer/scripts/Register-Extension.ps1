@@ -1,11 +1,20 @@
-param([Parameter(Mandatory=$true)][string]$ExtensionPath)
+param(
+    [Parameter(Mandatory=$true)][string]$ExtensionPath,
+    [string]$LogPath = ""
+)
 
 $ErrorActionPreference = "Stop"
-$logFile = "$env:TEMP\CPSK_Install.log"
+
+if ($LogPath -ne "" -and (Test-Path $LogPath)) {
+    $logFile = Join-Path $LogPath "register_extension.log"
+} else {
+    $logFile = "$env:TEMP\CPSK_Register.log"
+}
 
 function Write-Log { param([string]$Message)
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    "$timestamp - $Message" | Out-File -FilePath $logFile -Append -Encoding UTF8
+    $line = "$timestamp - $Message"
+    $line | Out-File -FilePath $logFile -Append -Encoding UTF8
     Write-Host $Message
 }
 
@@ -33,40 +42,137 @@ function Set-IniContent { param([string]$Path, [hashtable]$Content)
     $lines | Out-File -FilePath $Path -Encoding UTF8 -Force
 }
 
-Write-Log "=== CPSK Tools: Register Extension ==="
-Write-Log "Path: $ExtensionPath"
+try {
+    Write-Log "=========================================="
+    Write-Log "=== CPSK Tools: Register Extension ==="
+    Write-Log "=========================================="
+    Write-Log "Extension Path: $ExtensionPath"
+    Write-Log "Log File: $logFile"
+    Write-Log ""
 
-$pyrevitConfigDir = "$env:APPDATA\pyRevit"
-$pyrevitConfigFile = "$pyrevitConfigDir\pyRevit_config.ini"
-if (-not (Test-Path $pyrevitConfigDir)) { New-Item -ItemType Directory -Path $pyrevitConfigDir -Force | Out-Null }
-
-$extensionParentPath = Split-Path -Parent $ExtensionPath
-$config = Get-IniContent -Path $pyrevitConfigFile
-if (-not $config.ContainsKey("core")) { $config["core"] = @{} }
-
-$currentExtensions = @()
-if ($config["core"].ContainsKey("userextensions")) {
-    $extensionsStr = $config["core"]["userextensions"]
-    if ($extensionsStr -match '^\[(.+)\]$') {
-        $currentExtensions = $matches[1] -split ',' | ForEach-Object { $_.Trim().Trim('"').Trim("'") } | Where-Object { $_ -ne "" }
+    # Check if extension path exists
+    Write-Log "Checking if extension path exists..."
+    if (Test-Path $ExtensionPath) {
+        Write-Log "  [OK] Extension path exists: $ExtensionPath"
+        $items = Get-ChildItem -Path $ExtensionPath -ErrorAction SilentlyContinue
+        Write-Log "  Contents: $($items.Count) items"
+    } else {
+        Write-Log "  [ERROR] Extension path does NOT exist: $ExtensionPath"
     }
-}
+    Write-Log ""
 
-$normalizedNewPath = $extensionParentPath.Replace('\', '/').TrimEnd('/')
-$alreadyRegistered = $false
-foreach ($existingPath in $currentExtensions) {
-    if ($existingPath.Replace('\', '/').TrimEnd('/') -eq $normalizedNewPath) { $alreadyRegistered = $true; break }
-}
+    # pyRevit config
+    $pyrevitConfigDir = "$env:APPDATA\pyRevit"
+    $pyrevitConfigFile = "$pyrevitConfigDir\pyRevit_config.ini"
 
-if (-not $alreadyRegistered) {
-    $currentExtensions += $extensionParentPath
-    $pathsFormatted = $currentExtensions | ForEach-Object { '"' + $_.Replace('\', '/') + '"' }
-    $config["core"]["userextensions"] = "[" + ($pathsFormatted -join ", ") + "]"
-    Set-IniContent -Path $pyrevitConfigFile -Content $config
-    Write-Log "Extension registered"
-} else {
-    Write-Log "Extension already registered"
-}
+    Write-Log "pyRevit config directory: $pyrevitConfigDir"
+    Write-Log "pyRevit config file: $pyrevitConfigFile"
+    Write-Log ""
 
-Write-Log "=== Registration complete ==="
-exit 0
+    # Create config directory if needed
+    if (-not (Test-Path $pyrevitConfigDir)) {
+        Write-Log "Creating pyRevit config directory..."
+        New-Item -ItemType Directory -Path $pyrevitConfigDir -Force | Out-Null
+        Write-Log "  [OK] Created: $pyrevitConfigDir"
+    } else {
+        Write-Log "  [OK] pyRevit config directory exists"
+    }
+    Write-Log ""
+
+    # Get extension parent path (the folder containing CPSK.extension)
+    $extensionParentPath = Split-Path -Parent $ExtensionPath
+    Write-Log "Extension parent path (to register): $extensionParentPath"
+    Write-Log ""
+
+    # Read current config
+    Write-Log "Reading pyRevit config file..."
+    if (Test-Path $pyrevitConfigFile) {
+        Write-Log "  [OK] Config file exists"
+        $configContent = Get-Content -Path $pyrevitConfigFile -Raw -ErrorAction SilentlyContinue
+        Write-Log "  Current content:"
+        Write-Log "  ----------------"
+        $configContent -split "`n" | ForEach-Object { Write-Log "  $_" }
+        Write-Log "  ----------------"
+    } else {
+        Write-Log "  [!] Config file does not exist, will create new one"
+    }
+    Write-Log ""
+
+    $config = Get-IniContent -Path $pyrevitConfigFile
+    if (-not $config.ContainsKey("core")) {
+        $config["core"] = @{}
+        Write-Log "Created [core] section"
+    }
+
+    # Parse current extensions
+    $currentExtensions = @()
+    if ($config["core"].ContainsKey("userextensions")) {
+        $extensionsStr = $config["core"]["userextensions"]
+        Write-Log "Current userextensions value: $extensionsStr"
+        if ($extensionsStr -match '^\[(.+)\]$') {
+            $currentExtensions = $matches[1] -split ',' | ForEach-Object { $_.Trim().Trim('"').Trim("'") } | Where-Object { $_ -ne "" }
+            Write-Log "Parsed extensions:"
+            foreach ($ext in $currentExtensions) {
+                Write-Log "  - $ext"
+            }
+        }
+    } else {
+        Write-Log "No userextensions key found in config"
+    }
+    Write-Log ""
+
+    # Check if already registered
+    $normalizedNewPath = $extensionParentPath.Replace('\', '/').TrimEnd('/')
+    Write-Log "Normalized path to register: $normalizedNewPath"
+
+    $alreadyRegistered = $false
+    foreach ($existingPath in $currentExtensions) {
+        $normalizedExisting = $existingPath.Replace('\', '/').TrimEnd('/')
+        Write-Log "  Comparing with: $normalizedExisting"
+        if ($normalizedExisting -eq $normalizedNewPath) {
+            $alreadyRegistered = $true
+            Write-Log "  [MATCH] Already registered!"
+            break
+        }
+    }
+    Write-Log ""
+
+    # Register if needed
+    if (-not $alreadyRegistered) {
+        Write-Log "Registering new extension path..."
+        $currentExtensions += $extensionParentPath
+        $pathsFormatted = $currentExtensions | ForEach-Object { '"' + $_.Replace('\', '/') + '"' }
+        $newValue = "[" + ($pathsFormatted -join ", ") + "]"
+        $config["core"]["userextensions"] = $newValue
+        Write-Log "New userextensions value: $newValue"
+
+        Write-Log "Writing config file..."
+        Set-IniContent -Path $pyrevitConfigFile -Content $config
+        Write-Log "  [OK] Config file updated"
+
+        # Verify write
+        if (Test-Path $pyrevitConfigFile) {
+            $verifyContent = Get-Content -Path $pyrevitConfigFile -Raw
+            Write-Log "  Verification - new content:"
+            Write-Log "  ----------------"
+            $verifyContent -split "`n" | ForEach-Object { Write-Log "  $_" }
+            Write-Log "  ----------------"
+        }
+    } else {
+        Write-Log "Extension already registered, skipping"
+    }
+    Write-Log ""
+
+    Write-Log "=========================================="
+    Write-Log "=== Registration complete ==="
+    Write-Log "=========================================="
+    exit 0
+}
+catch {
+    Write-Log "=========================================="
+    Write-Log "=== ERROR ==="
+    Write-Log "=========================================="
+    Write-Log "Exception: $($_.Exception.Message)"
+    Write-Log "Stack trace: $($_.ScriptStackTrace)"
+    exit 1
+}

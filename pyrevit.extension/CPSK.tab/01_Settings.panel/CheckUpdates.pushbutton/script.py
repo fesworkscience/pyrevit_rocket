@@ -110,8 +110,7 @@ def check_for_updates():
 
 def main():
     """Основная функция."""
-    show_info("Проверка", "Проверка обновлений...")
-
+    # Сразу делаем запрос (занимает 1-2 сек)
     has_update, latest_version, download_url, release_name, current_or_error = check_for_updates()
 
     if has_update is None:

@@ -29,6 +29,9 @@ Source: "..\build\Register-Extension.ps1"; DestDir: "{app}\tools"; Flags: ignore
 Source: "..\build\Uninstall-CPSK.ps1"; DestDir: "{app}\tools"; Flags: ignoreversion
 Source: "..\build\version.txt"; DestDir: "{app}"; Flags: ignoreversion
 
+[Dirs]
+Name: "{app}\logs"
+
 [Registry]
 Root: HKCU; Subkey: "Software\CPSK\Tools"; ValueType: string; ValueName: "Version"; ValueData: "{#MyAppVersion}"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\CPSK\Tools"; ValueType: string; ValueName: "InstallPath"; ValueData: "{app}"; Flags: uninsdeletekey
@@ -45,20 +48,56 @@ var
   PyRevitInstalled: Boolean;
   PluginInstalled: Boolean;
   PluginVersion: String;
+  LogFile: String;
+
+procedure WriteLog(Msg: String);
+var
+  S: String;
+begin
+  S := GetDateTimeString('yyyy-mm-dd hh:nn:ss', '-', ':') + ' - ' + Msg;
+  SaveStringToFile(LogFile, S + #13#10, True);
+end;
 
 function IsPyRevitInstalled: Boolean;
 var
   Path: String;
 begin
   Result := False;
+  WriteLog('Checking pyRevit installation...');
+
   if RegQueryStringValue(HKEY_CURRENT_USER, 'Software\pyRevit', 'InstallPath', Path) then
-    Result := True
-  else if DirExists(ExpandConstant('{userappdata}\pyRevit-Master')) then
-    Result := True
-  else if DirExists(ExpandConstant('{commonappdata}\pyRevit')) then
-    Result := True
-  else if FileExists(ExpandConstant('{pf}\pyRevit CLI\pyrevit.exe')) then
+  begin
+    WriteLog('  Found in registry HKCU\Software\pyRevit: ' + Path);
     Result := True;
+  end
+  else
+    WriteLog('  Not found in registry HKCU\Software\pyRevit');
+
+  if DirExists(ExpandConstant('{userappdata}\pyRevit-Master')) then
+  begin
+    WriteLog('  Found directory: ' + ExpandConstant('{userappdata}\pyRevit-Master'));
+    Result := True;
+  end
+  else
+    WriteLog('  Directory not found: ' + ExpandConstant('{userappdata}\pyRevit-Master'));
+
+  if DirExists(ExpandConstant('{commonappdata}\pyRevit')) then
+  begin
+    WriteLog('  Found directory: ' + ExpandConstant('{commonappdata}\pyRevit'));
+    Result := True;
+  end
+  else
+    WriteLog('  Directory not found: ' + ExpandConstant('{commonappdata}\pyRevit'));
+
+  if FileExists(ExpandConstant('{pf}\pyRevit CLI\pyrevit.exe')) then
+  begin
+    WriteLog('  Found file: ' + ExpandConstant('{pf}\pyRevit CLI\pyrevit.exe'));
+    Result := True;
+  end
+  else
+    WriteLog('  File not found: ' + ExpandConstant('{pf}\pyRevit CLI\pyrevit.exe'));
+
+  WriteLog('pyRevit installed: ' + BoolToStr(Result));
 end;
 
 function GetInstalledPluginVersion: String;
@@ -67,7 +106,12 @@ var
 begin
   Result := '';
   if RegQueryStringValue(HKEY_CURRENT_USER, 'Software\CPSK\Tools', 'Version', Version) then
+  begin
     Result := Version;
+    WriteLog('Found installed CPSK Tools version: ' + Version);
+  end
+  else
+    WriteLog('CPSK Tools not found in registry');
 end;
 
 function IsPluginInstalled: Boolean;
@@ -80,6 +124,12 @@ begin
   ConfigStatusLabel.Caption := Msg;
   ConfigProgressBar.Position := Progress;
   WizardForm.Refresh;
+  WriteLog('Status: ' + Msg + ' (' + IntToStr(Progress) + '%)');
+end;
+
+function BoolToStr(B: Boolean): String;
+begin
+  if B then Result := 'True' else Result := 'False';
 end;
 
 procedure InitializeWizard;
@@ -148,11 +198,13 @@ end;
 
 procedure CurPageChanged(CurPageID: Integer);
 var
-  PyRevitScript, RegisterScript, ExtensionPath: String;
+  PyRevitScript, RegisterScript, ExtensionPath, LogPath: String;
   ResultCode: Integer;
+  CmdLine: String;
 begin
   if CurPageID = CheckPage.ID then
   begin
+    WriteLog('=== System Check Page ===');
     PyRevitInstalled := IsPyRevitInstalled;
     if PyRevitInstalled then
       PyRevitStatusLabel.Caption := '[OK] pyRevit is installed'
@@ -176,18 +228,30 @@ begin
 
   if CurPageID = ConfigPage.ID then
   begin
+    WriteLog('=== Configuration Page ===');
     WizardForm.NextButton.Enabled := False;
     WizardForm.BackButton.Enabled := False;
 
     PyRevitScript := ExpandConstant('{app}\tools\Install-PyRevit.ps1');
     RegisterScript := ExpandConstant('{app}\tools\Register-Extension.ps1');
     ExtensionPath := ExpandConstant('{app}\CPSK.extension');
+    LogPath := ExpandConstant('{app}\logs');
+
+    WriteLog('PyRevitScript: ' + PyRevitScript);
+    WriteLog('RegisterScript: ' + RegisterScript);
+    WriteLog('ExtensionPath: ' + ExtensionPath);
+    WriteLog('LogPath: ' + LogPath);
 
     if not PyRevitInstalled then
     begin
       UpdateConfigStatus('Installing pyRevit... This may take several minutes.', 20);
-      Exec('powershell.exe', Format('-NoProfile -ExecutionPolicy Bypass -File "%s" -RequiredVersion "{#PyRevitVersion}" -DownloadUrl "{#PyRevitUrl}"', [PyRevitScript]), '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-      UpdateConfigStatus('pyRevit installed successfully!', 60);
+      CmdLine := Format('-NoProfile -ExecutionPolicy Bypass -File "%s" -RequiredVersion "{#PyRevitVersion}" -DownloadUrl "{#PyRevitUrl}"', [PyRevitScript]);
+      WriteLog('Executing: powershell.exe ' + CmdLine);
+      if Exec('powershell.exe', CmdLine, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+        WriteLog('Install-PyRevit.ps1 completed with exit code: ' + IntToStr(ResultCode))
+      else
+        WriteLog('ERROR: Failed to execute Install-PyRevit.ps1');
+      UpdateConfigStatus('pyRevit installation step complete.', 60);
       Sleep(500);
     end
     else
@@ -197,9 +261,16 @@ begin
     end;
 
     UpdateConfigStatus('Registering CPSK extension in pyRevit...', 80);
-    Exec('powershell.exe', Format('-NoProfile -ExecutionPolicy Bypass -File "%s" -ExtensionPath "%s"', [RegisterScript, ExtensionPath]), '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    CmdLine := Format('-NoProfile -ExecutionPolicy Bypass -File "%s" -ExtensionPath "%s" -LogPath "%s"', [RegisterScript, ExtensionPath, LogPath]);
+    WriteLog('Executing: powershell.exe ' + CmdLine);
+    if Exec('powershell.exe', CmdLine, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+      WriteLog('Register-Extension.ps1 completed with exit code: ' + IntToStr(ResultCode))
+    else
+      WriteLog('ERROR: Failed to execute Register-Extension.ps1');
 
     UpdateConfigStatus('Configuration complete! Please restart Revit to use CPSK Tools.', 100);
+    WriteLog('=== Configuration Complete ===');
+    WriteLog('Log file saved to: ' + LogFile);
     Sleep(1500);
 
     WizardForm.NextButton.Enabled := True;
@@ -222,5 +293,11 @@ end;
 
 function InitializeSetup: Boolean;
 begin
+  LogFile := ExpandConstant('{localappdata}\CPSK\logs\install_') + GetDateTimeString('yyyymmdd_hhnnss', '-', '-') + '.log';
+  ForceDirectories(ExtractFilePath(LogFile));
+  WriteLog('=== CPSK Tools Installation Started ===');
+  WriteLog('Version: {#MyAppVersion}');
+  WriteLog('Log file: ' + LogFile);
+  WriteLog('Install path: ' + ExpandConstant('{localappdata}\CPSK'));
   Result := True;
 end;

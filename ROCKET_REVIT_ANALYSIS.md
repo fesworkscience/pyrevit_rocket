@@ -22,13 +22,13 @@ RocketRevit.sln
 ## ФУНКЦИОНАЛ (отметь что переносить)
 
 ### 1. СИСТЕМА ОБНОВЛЕНИЙ
-[ ] **Автообновление Squirrel** - автоматические обновления плагина
+[НЕ ПЕРЕНОСИМ] **Автообновление Squirrel** - автоматические обновления плагина
     - Умное определение изменённых компонентов
     - Горячая перезагрузка UI без перезапуска Revit
     - Манифест компонентов с хешами файлов
 
 ### 2. DYNAMO СКРИПТЫ (DynamoScriptCommand)
-[ ] **Запуск Dynamo скриптов с сервера** - скачивание и выполнение .dyn
+[НЕ ПЕРЕНОСИМ] **Запуск Dynamo скриптов с сервера** - скачивание и выполнение .dyn
     - Поиск скриптов по API
     - Скачивание во временную папку
     - Запуск через Dynamo Player
@@ -36,7 +36,7 @@ RocketRevit.sln
     - Требует авторизации
 
 ### 3. СЕМЕЙСТВА (FamilyInsertCommand)
-[ ] **Вставка семейств с сервера** - скачивание и загрузка .rfa
+[ПЕРЕНОСИМ!!! Нужно] **Вставка семейств с сервера** - скачивание и загрузка .rfa
     - Поиск семейств по API
     - Скачивание во временную папку
     - Загрузка в проект Revit
@@ -76,14 +76,14 @@ RocketRevit.sln
 [ ] **DWGConverter + NetDxfProcessor** - работа с DWG/DXF
 
 ### 5. AR ИНТЕГРАЦИЯ
-[ ] **ARIntegrationCommand** - интеграция с AR
+[НЕ ПЕРЕНОСИМ] **ARIntegrationCommand** - интеграция с AR
     - ARIntegrationService
     - ARIntegrationWindow (WPF)
 
-[ ] **ObservationPointsCommand** - точки наблюдения
+[НЕ ПЕРЕНОСИМ] **ObservationPointsCommand** - точки наблюдения
 
 ### 6. ЧАТ СИСТЕМА
-[ ] **Chat** - встроенный чат для совместной работы
+[НЕ ПЕРЕНОСИМ] **Chat** - встроенный чат для совместной работы
     - ChatWindow, ChatNotificationPopup
     - ChatWebSocket, ChatApiService
     - ChatRoom, ChatMessage модели
@@ -100,7 +100,7 @@ RocketRevit.sln
     - **Реализовано в:** `01_Settings.panel/Login.pushbutton/script.py`
 
 ### 8. НАСТРОЙКИ
-[ ] **SettingsCommand** - настройки плагина
+[НЕ ПЕРЕНОСИМ] **SettingsCommand** - настройки плагина
     - UnifiedSettings
     - AppSettings, ApiConfig
 
@@ -110,20 +110,20 @@ RocketRevit.sln
 [ ] **SendProjectStatisticsCommand** - отправка статистики
 
 ### 10. UI КОМПОНЕНТЫ
-[ ] **NotificationWindow** - уведомления (WPF)
-[ ] **ProgressForm** - прогресс бар
-[ ] **BaseWindow** - базовое окно
-[ ] **Диалоги выбора** - ScheduleSelectionDialog, FamilyTypeSelectionDialog и др.
+[НЕ ПЕРЕНОСИМ] **NotificationWindow** - уведомления (WPF)
+[НЕ ПЕРЕНОСИМ] **ProgressForm** - прогресс бар
+[НЕ ПЕРЕНОСИМ ] **BaseWindow** - базовое окно
+[НЕ ПЕРЕНОСИМ] **Диалоги выбора** - ScheduleSelectionDialog, FamilyTypeSelectionDialog и др.
 
 ### 11. УТИЛИТЫ
-[ ] **CentralLogger** - централизованное логирование
-[ ] **DebugLogger** - отладочные логи
+[НЕ ПЕРЕНОСИМ] **CentralLogger** - централизованное логирование
+[НЕ ПЕРЕНОСИМ] **DebugLogger** - отладочные логи
 [x] **ApiService** - работа с API (ПЕРЕНЕСЕНО)
     - **Реализовано в:** `lib/cpsk_auth.py` (класс ApiClient)
 
 ### 12. ДОКУМЕНТАЦИЯ
-[ ] **README.md** - документация для пользователей и разработчиков
-[ ] **CLAUDE.md** - конфигурация для Claude
+[НЕ ПЕРЕНОСИМ] **README.md** - документация для пользователей и разработчиков
+[НЕ ПЕРЕНОСИМ] **CLAUDE.md** - конфигурация для Claude
 
 ---
 

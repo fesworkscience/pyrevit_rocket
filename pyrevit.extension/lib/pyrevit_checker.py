@@ -23,6 +23,7 @@ pyRevit Universal Code Checker
     - неправильная работа с cpsk_settings.yaml (использовать cpsk_config)
     - отсутствие проверки авторизации require_auth() в скриптах кнопок
     - использование MessageBox.Show или forms.alert (использовать cpsk_notify)
+    - использование output.print_md для ошибок (использовать cpsk_notify)
 """
 
 import sys
@@ -275,11 +276,8 @@ class PyRevitChecker:
                         except_indent = current_indent
                         has_notify_in_block = False
 
-                # Проверяем наличие notify внутри блока
-                if 'show_error' in line or 'show_warning' in line or 'MessageBox.Show' in line:
-                    has_notify_in_block = True
-                # output.print_md тоже видно пользователю (pyRevit output)
-                if 'output.print_md' in line or 'forms.alert' in line:
+                # Проверяем наличие cpsk_notify внутри блока (ТОЛЬКО cpsk_notify!)
+                if 'show_error' in line or 'show_warning' in line or 'show_info' in line or 'show_success' in line:
                     has_notify_in_block = True
                 # pass, return, raise - допустимые варианты без notify
                 if re.match(r'\s*(pass|return|raise)\b', line):
@@ -399,7 +397,7 @@ class PyRevitChecker:
         if filename == 'startup.py':
             return
 
-        # Ищем использование MessageBox.Show
+        # Ищем использование запрещённых методов уведомлений
         for i, line in enumerate(lines, 1):
             code_part = line.split('#')[0]
 
@@ -414,6 +412,18 @@ class PyRevitChecker:
                 self.warnings.append(
                     "Строка {}: forms.alert запрещён. Используйте cpsk_notify.show_error/warning/info/success".format(i)
                 )
+
+            # output.print_md для сообщений об ошибках - должен использоваться cpsk_notify
+            # Ловим только явные ошибки: "Ошибка", "Error", "**Error**", "failed", "не удалось"
+            if 'output.print_md' in code_part:
+                error_keywords = ['ошибк', 'error', 'failed', 'не удалось', 'невозможно', 'exception']
+                line_lower = code_part.lower()
+                for keyword in error_keywords:
+                    if keyword in line_lower:
+                        self.warnings.append(
+                            "Строка {}: output.print_md для ошибок запрещён. Используйте cpsk_notify.show_error()".format(i)
+                        )
+                        break
 
     def get_report(self):
         """Получить отчет."""
