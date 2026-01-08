@@ -49,6 +49,92 @@ jobs:
           Copy-Item -Path "installer\scripts\*" -Destination "build\" -Force
           "${{ steps.version.outputs.VERSION }}" | Out-File -FilePath "build\version.txt" -Encoding UTF8 -NoNewline
 
+      - name: Download IronPython
+        shell: pwsh
+        run: |
+          Write-Host "Downloading IronPython 2.7.12..."
+          Invoke-WebRequest -Uri "https://github.com/IronLanguages/ironpython2/releases/download/ipy-2.7.12/IronPython.2.7.12.zip" -OutFile "ironpython.zip"
+          Expand-Archive -Path "ironpython.zip" -DestinationPath "C:\IronPython" -Force
+          Write-Host "IronPython installed to C:\IronPython"
+          Get-ChildItem "C:\IronPython" | Select-Object Name
+
+      - name: Compile Python modules to DLL
+        shell: pwsh
+        run: |
+          $ipy = "C:\IronPython\net45\ipy.exe"
+          $pyc = "C:\IronPython\net45\Tools\Scripts\pyc.py"
+          $libDir = "build\CPSK.extension\lib"
+
+          Write-Host "=== Compiling Python to DLL ==="
+          Write-Host "IronPython: $ipy"
+          Write-Host "Compiler: $pyc"
+          Write-Host "Lib directory: $libDir"
+
+          # Modules to compile (exclude __init__.py and dev tools)
+          $modulesToCompile = @(
+            "cpsk_auth",
+            "cpsk_config",
+            "cpsk_notify",
+            "cpsk_utils",
+            "cpsk_geometry",
+            "cpsk_parameters",
+            "cpsk_selection",
+            "cpsk_dynamo",
+            "ids_checker"
+          )
+
+          Write-Host "Modules to compile:"
+          $modulesToCompile | ForEach-Object { Write-Host "  - $_" }
+
+          # Change to lib directory
+          Push-Location $libDir
+
+          # Compile each module to separate DLL (IronPython pyc.py limitation)
+          foreach ($module in $modulesToCompile) {
+            $pyFile = "$module.py"
+            $dllFile = "$module.dll"
+
+            if (Test-Path $pyFile) {
+              Write-Host "Compiling $pyFile -> $dllFile"
+              & $ipy $pyc /target:dll /out:$dllFile $pyFile 2>&1
+
+              if (Test-Path $dllFile) {
+                Write-Host "  [OK] Created $dllFile"
+
+                # Create stub .py file that loads from DLL
+                $stubContent = @"
+# -*- coding: utf-8 -*-
+# Auto-generated stub - loads from compiled DLL
+import clr
+import os
+_dll = os.path.join(os.path.dirname(__file__), "$dllFile")
+clr.AddReferenceToFileAndPath(_dll)
+from $module import *
+"@
+                # Remove original and create stub
+                Remove-Item $pyFile -Force
+                $stubContent | Out-File -FilePath $pyFile -Encoding UTF8
+                Write-Host "  [OK] Created stub $pyFile"
+              } else {
+                Write-Host "  [WARN] Failed to compile $pyFile, keeping original"
+              }
+            }
+          }
+
+          # Remove dev tools
+          if (Test-Path "pyrevit_checker.py") {
+            Remove-Item "pyrevit_checker.py" -Force
+            Write-Host "Removed: pyrevit_checker.py (dev tool)"
+          }
+
+          Pop-Location
+
+          Write-Host "=== Compilation complete ==="
+          Write-Host "Files in lib:"
+          Get-ChildItem "$libDir" | ForEach-Object {
+            Write-Host "  $($_.Name) ($($_.Length) bytes)"
+          }
+
       - name: Install Inno Setup
         shell: pwsh
         run: |
