@@ -20,7 +20,6 @@ import System
 from System.Windows.Forms import (
     Form, Label, Button, ComboBox, ListBox, TextBox,
     FormStartPosition, FormBorderStyle,
-    MessageBox, MessageBoxButtons, MessageBoxIcon,
     DialogResult, OpenFileDialog, GroupBox
 )
 from System.Drawing import Point, Size, Color
@@ -33,8 +32,16 @@ LIB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.d
 if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
 
-# Проверка окружения
+# Импорт модулей из lib
+from cpsk_notify import show_error, show_warning, show_info, show_success
+from cpsk_auth import require_auth
 from cpsk_config import require_environment
+
+# Проверка авторизации
+if not require_auth():
+    sys.exit()
+
+# Проверка окружения
 if not require_environment():
     sys.exit()
 
@@ -492,13 +499,9 @@ class FillTypeParamsForm(Form):
             self.filtered_ids_params = self.ids_params[:]
             self.update_ids_list()
 
-            MessageBox.Show(
-                "IDS загружен: {} параметров с допустимыми значениями".format(len(self.ids_params)),
-                "IDS", MessageBoxButtons.OK, MessageBoxIcon.Information)
+            show_info("IDS", "IDS загружен: {} параметров с допустимыми значениями".format(len(self.ids_params)))
         except Exception as e:
-            MessageBox.Show(
-                "Ошибка загрузки IDS: {}".format(str(e)),
-                "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error)
+            show_error("Ошибка", "Ошибка загрузки IDS", details=str(e))
 
     def update_ids_list(self):
         """Обновить список параметров IDS."""
@@ -594,15 +597,11 @@ class FillTypeParamsForm(Form):
             # Обновить список параметров
             self.load_type_params()
 
-            MessageBox.Show(
-                "Параметр '{}' установлен: {}".format(param_name, new_value),
-                "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information)
+            show_success("Успех", "Параметр '{}' установлен: {}".format(param_name, new_value))
 
         except Exception as e:
             t.RollBack()
-            MessageBox.Show(
-                "Ошибка: {}".format(str(e)),
-                "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error)
+            show_error("Ошибка", "Ошибка установки параметра", details=str(e))
 
     def on_close(self, sender, args):
         """Закрыть форму."""

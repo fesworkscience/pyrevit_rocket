@@ -81,6 +81,113 @@ predType_node = spec_node.SelectSingleNode("ids:applicability/ids:entity/ids:pre
 - `Application.Run()` (использовать `ShowDialog()`)
 - `async/await`, `yield from`, `nonlocal` (запрещены)
 - расширенная распаковка `*rest` (запрещена)
+- отсутствие `require_auth()` в скриптах кнопок
+- неправильная работа с `cpsk_settings.yaml` (использовать `cpsk_config`)
+- использование `MessageBox.Show` или `forms.alert` (использовать `cpsk_notify`)
+
+## Проверка авторизации (КРИТИЧНО!)
+
+Все кнопки (кроме Login) должны проверять авторизацию в начале скрипта.
+Если пользователь не залогинен, скрипт должен показать предупреждение и завершиться.
+
+### ПРАВИЛО: Добавляй проверку авторизации в каждый script.py!
+
+```python
+# -*- coding: utf-8 -*-
+"""Описание скрипта."""
+
+__title__ = "Название"
+__author__ = "CPSK"
+
+import os
+import sys
+
+# ... импорты clr, WinForms, pyrevit ...
+
+# Добавляем lib в путь для импорта cpsk_auth
+SCRIPT_DIR = os.path.dirname(__file__)
+LIB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))), "lib")
+if LIB_DIR not in sys.path:
+    sys.path.insert(0, LIB_DIR)
+
+# Проверка авторизации
+from cpsk_auth import require_auth
+if not require_auth():
+    sys.exit()
+
+# ... остальной код скрипта ...
+```
+
+### Исключения:
+- `Login.pushbutton` - не требует проверки (это сама кнопка входа)
+- Вспомогательные модули (не `script.py`) - не проверяются
+
+## Уведомления cpsk_notify (ОБЯЗАТЕЛЬНО!)
+
+Все уведомления в проекте должны использовать единый модуль `cpsk_notify`.
+**НЕ используй** `MessageBox.Show` или `forms.alert` - они запрещены!
+
+### Импорт:
+```python
+from cpsk_notify import show_error, show_warning, show_info, show_success, show_toast
+```
+
+### Типы уведомлений:
+
+```python
+# Ошибка (красный) - для критических ошибок
+show_error("Заголовок", "Сообщение", details="Подробности...")
+
+# Предупреждение (оранжевый) - для предупреждений
+show_warning("Внимание", "Сообщение", details="Подробности...")
+
+# Информация (синий) - для информационных сообщений
+show_info("Информация", "Сообщение")
+
+# Успех (зелёный) - для подтверждения успешных операций
+show_success("Готово", "Операция завершена")
+```
+
+### Параметры:
+
+```python
+show_error(
+    title,          # Заголовок
+    message,        # Краткое сообщение
+    details=None,   # Детали (разворачиваются кнопкой)
+    blocking=True,  # True=модальное окно, False=тост в углу
+    auto_close=0    # Секунды до автозакрытия (0=не закрывать)
+)
+```
+
+### Примеры использования:
+
+```python
+# Блокирующая ошибка с деталями (ждёт OK)
+show_error(
+    "Ошибка загрузки",
+    "Не удалось загрузить файл",
+    details="Путь: C:\\...\\file.txt\nОшибка: File not found"
+)
+
+# Неблокирующий тост успеха (автозакрытие через 3 сек)
+show_success("Сохранено", "Файл успешно сохранён", blocking=False, auto_close=3)
+
+# Или через удобную обёртку show_toast
+show_toast("CPSK", "Готово к работе", notification_type="success", auto_close=5)
+```
+
+### Замена старого кода:
+
+```python
+# НЕПРАВИЛЬНО - запрещено!
+MessageBox.Show("Сообщение", "Заголовок", MessageBoxButtons.OK, MessageBoxIcon.Error)
+forms.alert("Сообщение", title="Заголовок")
+
+# ПРАВИЛЬНО - используй cpsk_notify!
+show_error("Заголовок", "Сообщение")
+show_info("Заголовок", "Сообщение")
+```
 
 ## ВАЖНО: Ошибка при Reload pyRevit
 
@@ -697,3 +804,89 @@ with revit.Transaction("Create Elements"):
 ### Element type vs instance
 - `WhereElementIsElementType()` - Family types (templates)
 - `WhereElementIsNotElementType()` - Placed instances
+
+## Работа с конфигом cpsk_settings.yaml (КРИТИЧНО!)
+
+Все настройки проекта хранятся в едином файле `cpsk_settings.yaml` в корне проекта.
+**НИКОГДА не создавай свои функции чтения/записи конфига!**
+
+### Структура конфига:
+
+```yaml
+# cpsk_settings.yaml
+auth:
+  email: "user@email.com"
+  token: "eyJhbGciOiJIUzI1NiIs..."
+  remember: false
+
+environment:
+  python_path: "C:/Python313/python.exe"
+  installed: true
+  last_check: "2024-01-15 10:30:00"
+
+notifications:
+  show_startup_check: true
+  show_env_warnings: true
+```
+
+### ПРАВИЛО: Всегда используй cpsk_config.py!
+
+```python
+from cpsk_config import get_setting, set_setting
+
+# Чтение настройки (путь через точку)
+token = get_setting("auth.token", "")  # второй аргумент - значение по умолчанию
+email = get_setting("auth.email", "")
+is_installed = get_setting("environment.installed", False)
+
+# Запись настройки
+set_setting("auth.token", "new_token_value")
+set_setting("auth.email", "user@example.com")
+set_setting("environment.installed", True)
+```
+
+### НЕПРАВИЛЬНО - НЕ делай так!
+
+```python
+# НЕПРАВИЛЬНО - свои функции чтения/записи!
+def _read_config():
+    with open("cpsk_settings.yaml") as f:
+        ...
+
+def _save_config(data):
+    with open("cpsk_settings.yaml", "w") as f:
+        ...
+
+# НЕПРАВИЛЬНО - прямая работа с файлом!
+import yaml
+with open("cpsk_settings.yaml") as f:
+    config = yaml.load(f)
+```
+
+### Добавление новой секции в конфиг:
+
+1. Добавь секцию в `DEFAULT_SETTINGS` в `cpsk_config.py`:
+```python
+DEFAULT_SETTINGS = {
+    "auth": {...},
+    "environment": {...},
+    "notifications": {...},
+    "my_new_section": {  # Новая секция
+        "option1": "",
+        "option2": False
+    }
+}
+```
+
+2. Используй через get_setting/set_setting:
+```python
+value = get_setting("my_new_section.option1", "default")
+set_setting("my_new_section.option2", True)
+```
+
+### Почему это важно:
+
+1. **Единообразие** - все модули работают с одним форматом
+2. **Не затирает данные** - при сохранении сохраняются ВСЕ секции
+3. **Миграция** - легко добавлять новые настройки с defaults
+4. **В .gitignore** - файл не попадает в репозиторий (токены безопасны)

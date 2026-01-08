@@ -25,7 +25,6 @@ from System.Windows.Forms import (
     Form, Label, TextBox, Button, Panel, ComboBox, ListBox, ListView,
     ListViewItem, ColumnHeader, View, CheckBox,
     DockStyle, FormStartPosition, FormBorderStyle,
-    MessageBox, MessageBoxButtons, MessageBoxIcon,
     DialogResult, ProgressBar, ProgressBarStyle, GroupBox, TabControl, TabPage
 )
 from System.Drawing import Point, Size, Color, Font, FontStyle
@@ -39,8 +38,16 @@ LIB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.d
 if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
 
-# Проверка окружения
+# Импорт модулей из lib
+from cpsk_notify import show_error, show_warning, show_info, show_success
+from cpsk_auth import require_auth
 from cpsk_config import require_environment, get_venv_python
+
+# Проверка авторизации
+if not require_auth():
+    sys.exit()
+
+# Проверка окружения
 if not require_environment():
     sys.exit()
 
@@ -686,6 +693,11 @@ class IDSCheckerForm(Form):
     _get_param_value = staticmethod(get_param_value)
     _find_python = staticmethod(find_python)
     _run_ids_check = staticmethod(run_ids_check)
+    # cpsk_notify functions
+    _show_error = staticmethod(show_error)
+    _show_warning = staticmethod(show_warning)
+    _show_info = staticmethod(show_info)
+    _show_success = staticmethod(show_success)
 
     def __init__(self):
         self.ids_path = None
@@ -704,9 +716,6 @@ class IDSCheckerForm(Form):
         self._doc = doc
         self._uidoc = uidoc
         self._Color = Color
-        self._MessageBox = MessageBox
-        self._MessageBoxButtons = MessageBoxButtons
-        self._MessageBoxIcon = MessageBoxIcon
         self._IDSParser = IDSParser
         self.setup_form()
 
@@ -1187,12 +1196,8 @@ class IDSCheckerForm(Form):
             self.Close()
             self._uidoc.Application.PostCommand(cmd_id)
         except Exception as e:
-            self._MessageBox.Show(
-                "Не удалось открыть окно экспорта IFC:\n{}".format(str(e)),
-                "Ошибка",
-                self._MessageBoxButtons.OK,
-                self._MessageBoxIcon.Error
-            )
+            self._show_error("Ошибка", "Не удалось открыть окно экспорта IFC",
+                             details=str(e))
 
     def on_browse_ifc_click(self, sender, args):
         """Выбор IFC файла для проверки."""
@@ -1255,8 +1260,7 @@ class IDSCheckerForm(Form):
     def on_filter_has_param(self, sender, args):
         """Показать элементы, у которых ЕСТЬ выбранный параметр."""
         if self.list_params.SelectedItems.Count == 0:
-            self._MessageBox.Show("Выберите параметр в списке", "Информация",
-                            self._MessageBoxButtons.OK, self._MessageBoxIcon.Information)
+            self._show_info("Информация", "Выберите параметр в списке")
             return
 
         selected_item = self.list_params.SelectedItems[0]
@@ -1267,8 +1271,7 @@ class IDSCheckerForm(Form):
     def on_filter_by_value(self, sender, args):
         """Показать элементы с определённым значением выбранного параметра."""
         if self.list_params.SelectedItems.Count == 0:
-            self._MessageBox.Show("Выберите параметр в списке", "Информация",
-                            self._MessageBoxButtons.OK, self._MessageBoxIcon.Information)
+            self._show_info("Информация", "Выберите параметр в списке")
             return
 
         selected_item = self.list_params.SelectedItems[0]
@@ -1276,8 +1279,7 @@ class IDSCheckerForm(Form):
         param_value = selected_item.SubItems[4].Text  # Значение
 
         if param_value == "-" or not param_value:
-            self._MessageBox.Show("Сначала проверьте элемент чтобы получить значение", "Информация",
-                            self._MessageBoxButtons.OK, self._MessageBoxIcon.Information)
+            self._show_info("Информация", "Сначала проверьте элемент чтобы получить значение")
             return
 
         self._isolate_elements_by_param(param_name, param_value, filter_mode="has_value")
@@ -1285,8 +1287,7 @@ class IDSCheckerForm(Form):
     def on_filter_missing(self, sender, args):
         """Показать элементы БЕЗ выбранного параметра."""
         if self.list_params.SelectedItems.Count == 0:
-            self._MessageBox.Show("Выберите параметр в списке", "Информация",
-                            self._MessageBoxButtons.OK, self._MessageBoxIcon.Information)
+            self._show_info("Информация", "Выберите параметр в списке")
             return
 
         selected_item = self.list_params.SelectedItems[0]
@@ -1430,8 +1431,7 @@ class IDSCheckerForm(Form):
     def on_check_instance(self, sender, args):
         """Проверить параметры выбранного экземпляра и подсчитать элементы."""
         if not self.ids_parser or self.cmb_entity.SelectedIndex < 0:
-            self._MessageBox.Show("Сначала выберите IDS файл и тип", "Ошибка",
-                            self._MessageBoxButtons.OK, self._MessageBoxIcon.Warning)
+            self._show_warning("Ошибка", "Сначала выберите IDS файл и тип")
             return
 
         # Проверить что есть выбранные элементы
@@ -1441,22 +1441,19 @@ class IDSCheckerForm(Form):
                 checked_count += 1
 
         if checked_count == 0:
-            self._MessageBox.Show("Отметьте хотя бы один параметр для проверки", "Ошибка",
-                            self._MessageBoxButtons.OK, self._MessageBoxIcon.Warning)
+            self._show_warning("Ошибка", "Отметьте хотя бы один параметр для проверки")
             return
 
         sel = self._uidoc.Selection.GetElementIds()
         if sel.Count != 1:
-            self._MessageBox.Show("Выделите один элемент в Revit", "Ошибка",
-                            self._MessageBoxButtons.OK, self._MessageBoxIcon.Warning)
+            self._show_warning("Ошибка", "Выделите один элемент в Revit")
             return
 
         elem_id = list(sel)[0]
         elem = self._doc.GetElement(elem_id)
 
         if not elem:
-            self._MessageBox.Show("Элемент не найден", "Ошибка",
-                            self._MessageBoxButtons.OK, self._MessageBoxIcon.Error)
+            self._show_error("Ошибка", "Элемент не найден")
             return
 
         prefix = self.txt_prefix.Text.strip()
@@ -1569,22 +1566,14 @@ class IDSCheckerForm(Form):
                 break
 
         if not python_path:
-            self._MessageBox.Show(
-                "Python не найден!\n\nУстановите Python 3.9+ и библиотеки:\npip install ifcopenshell ifctester",
-                "Ошибка",
-                self._MessageBoxButtons.OK,
-                self._MessageBoxIcon.Error
-            )
+            self._show_error("Ошибка", "Python не найден!",
+                             details="Установите Python 3.9+ и библиотеки:\npip install ifcopenshell ifctester")
             return
 
         # Проверяем существование IFC файла
         if not self._os.path.exists(self.ifc_path):
-            self._MessageBox.Show(
-                "IFC файл не найден:\n{}".format(self.ifc_path),
-                "Ошибка",
-                self._MessageBoxButtons.OK,
-                self._MessageBoxIcon.Error
-            )
+            self._show_error("Ошибка", "IFC файл не найден",
+                             details=self.ifc_path)
             return
 
         self.progress.Visible = True
@@ -1660,12 +1649,8 @@ class IDSCheckerForm(Form):
         if self.standard_report_path and self._os.path.exists(self.standard_report_path):
             self._os.startfile(self.standard_report_path)
         else:
-            self._MessageBox.Show(
-                "Стандартный отчет не найден.\n\nВключите опцию 'Также создать стандартный отчет' и запустите проверку снова.",
-                "Информация",
-                self._MessageBoxButtons.OK,
-                self._MessageBoxIcon.Information
-            )
+            self._show_info("Информация", "Стандартный отчет не найден",
+                            details="Включите опцию 'Также создать стандартный отчет' и запустите проверку снова.")
 
     def on_save_click(self, sender, args):
         """Сохранить HTML отчет."""
@@ -1681,7 +1666,7 @@ class IDSCheckerForm(Form):
         if save_path:
             import shutil
             shutil.copy(self.report_path, save_path)
-            self._forms.alert("Отчет сохранен:\n" + save_path, title="Готово")
+            self._show_success("Готово", "Отчет сохранен", details=save_path)
 
     def on_close_click(self, sender, args):
         """Закрыть форму."""
@@ -1696,22 +1681,12 @@ if __name__ == "__main__":
     except Exception as e:
         error_msg = str(e)
         if "NoneType" in error_msg and "Add" in error_msg:
-            MessageBox.Show(
-                "Ошибка pyRevit!\n\n"
-                "Это известная проблема с телеметрией pyRevit.\n\n"
-                "Решение: Полностью перезапустите Revit\n"
-                "(закройте и откройте заново).\n\n"
-                "НЕ используйте кнопку 'Reload' в pyRevit!",
-                "Требуется перезапуск Revit",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Warning
-            )
+            show_warning("Требуется перезапуск Revit", "Ошибка pyRevit!",
+                         details="Это известная проблема с телеметрией pyRevit.\n\n"
+                                 "Решение: Полностью перезапустите Revit\n"
+                                 "(закройте и откройте заново).\n\n"
+                                 "НЕ используйте кнопку 'Reload' в pyRevit!")
         else:
-            MessageBox.Show(
-                "Ошибка: {}\n\n"
-                "Если ошибка повторяется после Reload pyRevit,\n"
-                "попробуйте полностью перезапустить Revit.".format(error_msg),
-                "Ошибка",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error
-            )
+            show_error("Ошибка", "Ошибка выполнения скрипта",
+                       details="{}\n\nЕсли ошибка повторяется после Reload pyRevit,\n"
+                               "попробуйте полностью перезапустить Revit.".format(error_msg))

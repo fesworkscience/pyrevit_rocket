@@ -4,19 +4,8 @@ CPSK Tools - Startup Script
 Проверяет окружение при запуске и показывает всплывающее уведомление.
 """
 
-import clr
 import os
 import sys
-
-clr.AddReference('System.Windows.Forms')
-clr.AddReference('System.Drawing')
-
-import System
-from System.Windows.Forms import (
-    Form, Label, Button, Timer,
-    FormStartPosition, FormBorderStyle, FormWindowState
-)
-from System.Drawing import Point, Size, Color, Font, FontStyle, ContentAlignment
 
 # Добавляем lib в путь
 EXTENSION_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -24,105 +13,28 @@ LIB_DIR = os.path.join(EXTENSION_DIR, "lib")
 if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
 
+# Импорты после добавления lib в путь
+import clr
+clr.AddReference('System.Windows.Forms')
+from System.Windows.Forms import Timer
+
 try:
-    from cpsk_config import check_environment, get_setting
+    from cpsk_config import check_environment, get_setting, VENV_BASE_DIR
 except ImportError:
-    # Модуль ещё не установлен
     check_environment = None
     get_setting = None
+    VENV_BASE_DIR = ""
 
-
-class ToastNotification(Form):
-    """Всплывающее уведомление (Toast) в правом нижнем углу."""
-
-    def __init__(self, title, message, is_success=True, auto_close_seconds=5):
-        self.auto_close_seconds = auto_close_seconds
-        self.is_success = is_success
-        self._title = title
-        self._message = message
-        self.setup_form()
-
-    def setup_form(self):
-        """Настройка формы."""
-        self.Text = "CPSK"
-        self.Width = 320
-        self.Height = 100
-        self.FormBorderStyle = FormBorderStyle.None
-        self.ShowInTaskbar = False
-        self.TopMost = True
-        self.StartPosition = FormStartPosition.Manual
-
-        # Позиция в правом нижнем углу
-        screen = System.Windows.Forms.Screen.PrimaryScreen.WorkingArea
-        self.Location = Point(screen.Right - self.Width - 10, screen.Bottom - self.Height - 10)
-
-        # Цвет фона
-        if self.is_success:
-            self.BackColor = Color.FromArgb(240, 255, 240)  # Светло-зелёный
-            border_color = Color.FromArgb(34, 139, 34)
-        else:
-            self.BackColor = Color.FromArgb(255, 250, 240)  # Светло-оранжевый
-            border_color = Color.FromArgb(255, 140, 0)
-
-        # Заголовок
-        lbl_title = Label()
-        lbl_title.Text = self._title
-        lbl_title.Location = Point(10, 8)
-        lbl_title.Size = Size(250, 20)
-        lbl_title.Font = Font(lbl_title.Font.FontFamily, 10, FontStyle.Bold)
-        lbl_title.ForeColor = border_color
-        self.Controls.Add(lbl_title)
-
-        # Сообщение
-        lbl_msg = Label()
-        lbl_msg.Text = self._message
-        lbl_msg.Location = Point(10, 32)
-        lbl_msg.Size = Size(280, 40)
-        lbl_msg.ForeColor = Color.FromArgb(60, 60, 60)
-        self.Controls.Add(lbl_msg)
-
-        # Кнопка закрытия
-        btn_close = Button()
-        btn_close.Text = "X"
-        btn_close.Location = Point(self.Width - 25, 5)
-        btn_close.Size = Size(20, 20)
-        btn_close.FlatStyle = System.Windows.Forms.FlatStyle.Flat
-        btn_close.ForeColor = Color.Gray
-        btn_close.Click += self.on_close
-        self.Controls.Add(btn_close)
-
-        # Таймер для автозакрытия
-        if self.auto_close_seconds > 0:
-            self.timer = Timer()
-            self.timer.Interval = self.auto_close_seconds * 1000
-            self.timer.Tick += self.on_timer_tick
-            self.timer.Start()
-
-    def on_close(self, sender, args):
-        """Закрыть уведомление."""
-        if hasattr(self, 'timer'):
-            self.timer.Stop()
-        self.Close()
-
-    def on_timer_tick(self, sender, args):
-        """Автозакрытие по таймеру."""
-        self.timer.Stop()
-        self.Close()
-
-
-def show_toast(title, message, is_success=True, auto_close_seconds=5):
-    """Показать всплывающее уведомление (неблокирующее)."""
-    try:
-        toast = ToastNotification(title, message, is_success, auto_close_seconds)
-        toast.Show()  # Show вместо ShowDialog - неблокирующее
-    except Exception:
-        pass  # Игнорируем ошибки в startup
+try:
+    from cpsk_notify import show_toast
+except ImportError:
+    show_toast = None
 
 
 def check_and_notify():
     """Проверить окружение и показать уведомление."""
     # Проверяем настройки
-    if get_setting is None:
+    if get_setting is None or show_toast is None:
         return
 
     # Проверяем нужно ли показывать уведомление
@@ -138,22 +50,50 @@ def check_and_notify():
         result = check_environment()
 
         if result["is_ready"]:
+            # Формируем детали
+            details = """Python окружение успешно инициализировано.
+
+Версия: {}
+Путь: {}
+
+Все инструменты CPSK готовы к работе.""".format(
+                result.get("venv_version", "N/A"),
+                VENV_BASE_DIR
+            )
+
             show_toast(
                 "CPSK Tools",
-                "Окружение готово к работе.\n{}".format(result.get("venv_version", "")),
-                is_success=True,
-                auto_close_seconds=3
+                "Окружение готово к работе. {}".format(result.get("venv_version", "")),
+                details=details,
+                notification_type="success",
+                auto_close=4
             )
         else:
             show_env_warning = get_setting("notifications.show_env_warnings", True)
             if show_env_warning:
                 errors = result.get("errors", [])
                 error_msg = errors[0] if errors else "Требуется настройка"
+
+                details = """Python окружение не настроено или повреждено.
+
+Проблема: {}
+
+Как исправить:
+1. Перейдите в панель CPSK на ленте Revit
+2. Откройте Settings → Окружение
+3. Нажмите "Установить окружение"
+
+Путь установки: {}""".format(
+                    "\n".join(errors) if errors else "Неизвестная ошибка",
+                    VENV_BASE_DIR
+                )
+
                 show_toast(
                     "CPSK Tools - Внимание",
-                    "{}.\nНастройки > Установить окружение".format(error_msg),
-                    is_success=False,
-                    auto_close_seconds=7
+                    "{}. Откройте Settings → Окружение".format(error_msg),
+                    details=details,
+                    notification_type="warning",
+                    auto_close=8
                 )
     except Exception:
         pass  # Игнорируем ошибки

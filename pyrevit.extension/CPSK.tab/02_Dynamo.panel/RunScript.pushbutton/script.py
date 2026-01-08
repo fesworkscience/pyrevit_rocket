@@ -25,12 +25,26 @@ from System.Windows.Forms import (
     Form, Label, TextBox, Button, ListBox, TreeView, TreeNode,
     Panel, SplitContainer, Orientation, DockStyle,
     FormStartPosition, FormBorderStyle, SelectionMode,
-    MessageBox, MessageBoxButtons, MessageBoxIcon, Padding,
-    DialogResult, SendKeys, Clipboard, LinkLabel
+    Padding, DialogResult, SendKeys, Clipboard, LinkLabel
 )
 from System.Drawing import Point, Size, Color, Font, FontStyle
 
 from pyrevit import revit, forms, script
+
+# Добавляем lib в путь для импорта cpsk_auth
+import sys
+SCRIPT_DIR = os.path.dirname(__file__)
+LIB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR))), "lib")
+if LIB_DIR not in sys.path:
+    sys.path.insert(0, LIB_DIR)
+
+# Импорт модулей из lib
+from cpsk_notify import show_error, show_info, show_success, show_warning, show_confirm
+from cpsk_auth import require_auth
+
+# Проверка авторизации
+if not require_auth():
+    sys.exit()
 
 
 # === УТИЛИТЫ ДЛЯ ССЫЛОК ===
@@ -1397,46 +1411,27 @@ class DynamoLauncherForm(Form):
         to_sync = get_folders_to_sync()
 
         if not to_sync:
-            MessageBox.Show(
-                "Все папки уже синхронизированы с Dynamo Player.",
-                "Синхронизация",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information
-            )
+            show_info("Синхронизация", "Все папки уже синхронизированы с Dynamo Player")
             return
 
         # Показать какие папки будут добавлены
         folder_names = [name for name, path in to_sync]
-        msg = "Будут добавлены папки:\n- " + "\n- ".join(folder_names)
-        msg += "\n\nПродолжить?"
+        details = "Будут добавлены папки:\n- " + "\n- ".join(folder_names)
 
-        result = MessageBox.Show(
-            msg,
-            "Синхронизация папок",
-            MessageBoxButtons.YesNo,
-            MessageBoxIcon.Question
-        )
+        if not show_confirm("Синхронизация папок", "Добавить папки в Dynamo Player?",
+                            details=details):
+            return
 
-        if result == DialogResult.Yes:
-            added = sync_all_folders()
-            self.update_sync_status()
-            self.update_scripts_list()  # Обновить UI после синхронизации
+        added = sync_all_folders()
+        self.update_sync_status()
+        self.update_scripts_list()  # Обновить UI после синхронизации
 
-            if added:
-                MessageBox.Show(
-                    "Добавлены папки:\n- " + "\n- ".join(added) +
-                    "\n\nПЕРЕЗАПУСТИТЕ REVIT для применения изменений!",
-                    "Синхронизация завершена",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning
-                )
-            else:
-                MessageBox.Show(
-                    "Папки уже были добавлены ранее.",
-                    "Синхронизация",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information
-                )
+        if added:
+            show_warning("Синхронизация завершена",
+                         "ПЕРЕЗАПУСТИТЕ REVIT для применения изменений!",
+                         details="Добавлены папки:\n- " + "\n- ".join(added))
+        else:
+            show_info("Синхронизация", "Папки уже были добавлены ранее")
 
     def on_run_click(self, sender, args):
         """Запустить скрипт."""
@@ -1470,12 +1465,8 @@ class DynamoLauncherForm(Form):
             self.DialogResult = DialogResult.OK
             self.Close()
         else:
-            MessageBox.Show(
-                "Ошибка запуска скрипта:\n" + script_name,
-                "Ошибка",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error
-            )
+            show_error("Ошибка", "Ошибка запуска скрипта",
+                       details=script_name)
 
     def on_favorite_click(self, sender, args):
         """Добавить/удалить из избранного."""
@@ -1499,12 +1490,8 @@ class DynamoLauncherForm(Form):
             if os.path.exists(SCRIPTS_FOLDER):
                 os.startfile(SCRIPTS_FOLDER)
             else:
-                MessageBox.Show(
-                    "Папка не найдена:\n" + SCRIPTS_FOLDER,
-                    "Ошибка",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning
-                )
+                show_warning("Внимание", "Папка не найдена",
+                             details="Путь: {}".format(SCRIPTS_FOLDER))
         except:
             pass
 
@@ -1533,11 +1520,8 @@ if __name__ == "__main__":
         except Exception as e:
             output.print_md("Ошибка создания папки: {}".format(str(e)))
 
-        forms.alert(
-            "Создана папка для Dynamo скриптов:\n{}\n\n"
-            "Добавьте .dyn файлы в подпапки-категории.".format(SCRIPTS_FOLDER),
-            title="Первый запуск"
-        )
+        show_info("Первый запуск", "Создана папка для Dynamo скриптов",
+                  details="Путь: {}\n\nДобавьте .dyn файлы в подпапки-категории.".format(SCRIPTS_FOLDER))
 
     # ВАЖНО: В pyRevit используем ShowDialog(), НЕ Application.Run()!
     form = DynamoLauncherForm()

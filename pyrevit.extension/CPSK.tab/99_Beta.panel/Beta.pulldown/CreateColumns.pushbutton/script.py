@@ -4,6 +4,9 @@
 __title__ = "Create\nColumns"
 __author__ = "CPSK"
 
+import os
+import sys
+
 import clr
 clr.AddReference('System.Windows.Forms')
 clr.AddReference('System.Drawing')
@@ -17,6 +20,18 @@ from pyrevit import revit, forms, script
 
 import System.Windows.Forms as WinForms
 import System.Drawing as Drawing
+
+# Добавляем lib в путь для импорта cpsk_auth
+SCRIPT_DIR = os.path.dirname(__file__)
+LIB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))), "lib")
+if LIB_DIR not in sys.path:
+    sys.path.insert(0, LIB_DIR)
+
+# Проверка авторизации
+from cpsk_auth import require_auth
+from cpsk_notify import show_error, show_warning
+if not require_auth():
+    sys.exit()
 
 doc = revit.doc
 uidoc = revit.uidoc
@@ -191,12 +206,7 @@ class ColumnForm(WinForms.Form):
             self.DialogResult = WinForms.DialogResult.OK
             self.Close()
         except ValueError as e:
-            WinForms.MessageBox.Show(
-                "Invalid input: " + str(e),
-                "Error",
-                WinForms.MessageBoxButtons.OK,
-                WinForms.MessageBoxIcon.Error
-            )
+            show_error("Ошибка", "Неверный ввод", details=str(e))
 
     def on_cancel(self, sender, args):
         self.DialogResult = WinForms.DialogResult.Cancel
@@ -221,7 +231,7 @@ def create_columns(params):
     top_level_id = params['top_level_id']
 
     if not column_type_id:
-        forms.alert("No column type selected!")
+        show_warning("Колонны", "Не выбран тип колонны!")
         return 0
 
     base_level = doc.GetElement(base_level_id)
@@ -275,11 +285,7 @@ if __name__ == "__main__":
         .WhereElementIsElementType()
 
     if not list(collector):
-        forms.alert(
-            "No structural column families loaded in project!\n\n"
-            "Please load a column family first.",
-            title="No Column Types"
-        )
+        show_warning("Колонны", "В проекте нет семейств колонн!\nЗагрузите семейство колонн.")
     else:
         form = ColumnForm()
         result = form.ShowDialog()

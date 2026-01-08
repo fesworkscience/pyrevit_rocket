@@ -21,7 +21,6 @@ import System
 from System.Windows.Forms import (
     Form, Label, Button, Panel, CheckBox, ComboBox, ListBox,
     DockStyle, FormStartPosition, FormBorderStyle,
-    MessageBox, MessageBoxButtons, MessageBoxIcon,
     DialogResult, OpenFileDialog, CheckedListBox,
     SelectionMode, GroupBox, ScrollBars
 )
@@ -35,8 +34,16 @@ LIB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.d
 if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
 
-# Проверка окружения
+# Импорт модулей из lib
+from cpsk_notify import show_error, show_warning, show_info, show_success
+from cpsk_auth import require_auth
 from cpsk_config import require_environment
+
+# Проверка авторизации
+if not require_auth():
+    sys.exit()
+
+# Проверка окружения
 if not require_environment():
     sys.exit()
 
@@ -882,8 +889,7 @@ class FOPtoProjectForm(Form):
     def on_apply_ids_categories(self, sender, args):
         """Применить категории из IDS для выбранных параметров."""
         if not self.ids_data or not self.parser:
-            MessageBox.Show("Сначала загрузите IDS и ФОП файлы",
-                          "Внимание", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+            show_warning("Внимание", "Сначала загрузите IDS и ФОП файлы")
             return
 
         # Собрать все категории для выбранных параметров
@@ -909,8 +915,8 @@ class FOPtoProjectForm(Form):
                         is_instance_count += 1
 
         if not selected_cats:
-            MessageBox.Show("Выберите параметры, которые есть в IDS.\nПроверьте правильность префикса.",
-                          "Внимание", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+            show_warning("Внимание", "Выберите параметры, которые есть в IDS",
+                         details="Проверьте правильность префикса.")
             return
 
         # Отметить категории
@@ -963,8 +969,7 @@ class FOPtoProjectForm(Form):
                 selected_indices.append(i)
 
         if not selected_indices:
-            MessageBox.Show("Выберите параметры для добавления",
-                          "Внимание", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+            show_warning("Внимание", "Выберите параметры для добавления")
             return
 
         # Получить выбранные категории
@@ -974,8 +979,7 @@ class FOPtoProjectForm(Form):
                 selected_cat_indices.append(i)
 
         if not selected_cat_indices:
-            MessageBox.Show("Выберите категории для добавления параметров",
-                          "Внимание", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+            show_warning("Внимание", "Выберите категории для добавления параметров")
             return
 
         # Открыть файл определений
@@ -983,12 +987,11 @@ class FOPtoProjectForm(Form):
             app.SharedParametersFilename = self.fop_path
             def_file = app.OpenSharedParameterFile()
             if def_file is None:
-                MessageBox.Show("Не удалось открыть ФОП файл",
-                              "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error)
+                show_error("Ошибка", "Не удалось открыть ФОП файл")
                 return
         except Exception as e:
-            MessageBox.Show("Ошибка открытия ФОП: {}".format(str(e)),
-                          "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error)
+            show_error("Ошибка", "Ошибка открытия ФОП",
+                       details=str(e))
             return
 
         # Создать CategorySet
@@ -1003,8 +1006,7 @@ class FOPtoProjectForm(Form):
                 pass
 
         if cat_set.IsEmpty:
-            MessageBox.Show("Не удалось получить категории",
-                          "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error)
+            show_error("Ошибка", "Не удалось получить категории")
             return
 
         # Параметры
@@ -1057,22 +1059,26 @@ class FOPtoProjectForm(Form):
 
         except Exception as e:
             t.RollBack()
-            MessageBox.Show("Ошибка: {}".format(str(e)),
-                          "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error)
+            show_error("Ошибка", "Ошибка добавления параметров",
+                       details=str(e))
             return
 
         # Результат
-        msg = "Добавлено параметров: {}".format(added_count)
+        details = ""
         if errors:
-            msg += "\n\nПроблемы:\n" + "\n".join(errors[:10])
+            details = "Проблемы:\n" + "\n".join(errors[:10])
             if len(errors) > 10:
-                msg += "\n...и ещё {}".format(len(errors) - 10)
+                details += "\n...и ещё {}".format(len(errors) - 10)
 
         self.lbl_status.Text = "Добавлено: {}".format(added_count)
         self.lbl_status.ForeColor = Color.Green if added_count > 0 else Color.Red
 
-        MessageBox.Show(msg, "Результат", MessageBoxButtons.OK,
-                       MessageBoxIcon.Information if added_count > 0 else MessageBoxIcon.Warning)
+        if added_count > 0:
+            show_success("Результат", "Добавлено параметров: {}".format(added_count),
+                         details=details if details else None)
+        else:
+            show_warning("Результат", "Параметры не добавлены",
+                         details=details if details else None)
 
     def on_close(self, sender, args):
         """Закрыть форму."""

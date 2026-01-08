@@ -39,6 +39,11 @@ LIB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.d
 if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
 
+# Проверка авторизации
+from cpsk_auth import require_auth
+if not require_auth():
+    sys.exit()
+
 # Проверка окружения
 from cpsk_config import require_environment
 if not require_environment():

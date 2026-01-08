@@ -4,7 +4,22 @@
 __title__ = "Bounding\nBox"
 __author__ = "CPSK"
 
-from pyrevit import revit, forms, script
+import os
+import sys
+
+# Добавляем lib в путь для импорта cpsk_auth
+SCRIPT_DIR = os.path.dirname(__file__)
+LIB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))), "lib")
+if LIB_DIR not in sys.path:
+    sys.path.insert(0, LIB_DIR)
+
+# Проверка авторизации
+from cpsk_auth import require_auth
+from cpsk_notify import show_warning
+if not require_auth():
+    sys.exit()
+
+from pyrevit import revit, script
 
 output = script.get_output()
 doc = revit.doc
@@ -13,7 +28,7 @@ uidoc = revit.uidoc
 selection = uidoc.Selection.GetElementIds()
 
 if not selection:
-    forms.alert("Please select elements first")
+    show_warning("Выбор", "Сначала выберите элементы")
 else:
     def to_mm(feet):
         return round(feet * 304.8, 2)

@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <Package Name="CPSK Tools for Revit"
+           Manufacturer="CPSK"
+           Version="$(var.Version)"
+           UpgradeCode="E8A5C7B2-4F3D-4E9A-B6C8-1A2B3C4D5E6F"
+           Scope="perUser"
+           Compressed="yes">
+
+    <SummaryInformation Description="CPSK Tools for Revit - pyRevit extension" />
+    <Media Id="1" Cabinet="cpsk.cab" EmbedCab="yes" CompressionLevel="high" />
+
+    <MajorUpgrade DowngradeErrorMessage="Установлена более новая версия CPSK Tools ([ProductVersion]). Сначала удалите её."
+                  AllowSameVersionUpgrades="yes"
+                  Schedule="afterInstallInitialize" />
+
+    <Property Id="PYREVIT_VERSION" Value="$(var.PyRevitVersion)" />
+    <Property Id="PYREVIT_URL" Value="$(var.PyRevitUrl)" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+
+    <Property Id="CPSK_INSTALLED_VERSION" Secure="yes">
+      <RegistrySearch Id="CpskVersionSearch" Root="HKCU" Key="Software\CPSK\Tools" Name="Version" Type="raw" />
+    </Property>
+
+    <Property Id="CPSK_INSTALL_PATH" Secure="yes">
+      <RegistrySearch Id="CpskPathSearch" Root="HKCU" Key="Software\CPSK\Tools" Name="InstallPath" Type="raw" />
+    </Property>
+
+    <WixVariable Id="WixUILicenseRtf" Value="installer\info.rtf" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="INSTALLFOLDER" Name="CPSK">
+        <Directory Id="EXTENSIONFOLDER" Name="CPSK.extension" />
+        <Directory Id="TOOLSFOLDER" Name="tools" />
+      </Directory>
+    </StandardDirectory>
+
+    <ComponentGroup Id="ToolsComponents" Directory="TOOLSFOLDER">
+      <Component Id="InstallPyRevitScript" Guid="A1B2C3D4-E5F6-7890-ABCD-EF1234567890">
+        <File Id="InstallPyRevitPS1" Source="build\Install-PyRevit.ps1" KeyPath="yes" />
+      </Component>
+      <Component Id="RegisterExtensionScript" Guid="B2C3D4E5-F6A7-8901-BCDE-F12345678901">
+        <File Id="RegisterExtensionPS1" Source="build\Register-Extension.ps1" KeyPath="yes" />
+      </Component>
+      <Component Id="UninstallScript" Guid="C3D4E5F6-A7B8-9012-CDEF-123456789012">
+        <File Id="UninstallPS1" Source="build\Uninstall-CPSK.ps1" KeyPath="yes" />
+      </Component>
+      <Component Id="VersionFile" Guid="D4E5F6A7-B8C9-0123-DEF0-234567890123">
+        <File Id="VersionTxt" Source="build\version.txt" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <ComponentGroup Id="RegistryComponents" Directory="INSTALLFOLDER">
+      <Component Id="RegistryEntries" Guid="E5F6A7B8-C9D0-1234-EF01-345678901234">
+        <RegistryKey Root="HKCU" Key="Software\CPSK\Tools">
+          <RegistryValue Name="Version" Type="string" Value="$(var.Version)" />
+          <RegistryValue Name="InstallPath" Type="string" Value="[INSTALLFOLDER]" />
+          <RegistryValue Name="InstallDate" Type="string" Value="[Date]" />
+        </RegistryKey>
+      </Component>
+    </ComponentGroup>
+
+    <CustomAction Id="InstallPyRevit"
+                  Directory="TOOLSFOLDER"
+                  Execute="deferred"
+                  Impersonate="yes"
+                  ExeCommand="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;[TOOLSFOLDER]Install-PyRevit.ps1&quot; -RequiredVersion &quot;[PYREVIT_VERSION]&quot; -DownloadUrl &quot;[PYREVIT_URL]&quot;"
+                  Return="check" />
+
+    <CustomAction Id="RegisterExtension"
+                  Directory="TOOLSFOLDER"
+                  Execute="deferred"
+                  Impersonate="yes"
+                  ExeCommand="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;[TOOLSFOLDER]Register-Extension.ps1&quot; -ExtensionPath &quot;[EXTENSIONFOLDER]&quot;"
+                  Return="check" />
+
+    <CustomAction Id="UnregisterExtension"
+                  Directory="TOOLSFOLDER"
+                  Execute="deferred"
+                  Impersonate="yes"
+                  ExeCommand="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;[TOOLSFOLDER]Uninstall-CPSK.ps1&quot; -ExtensionPath &quot;[EXTENSIONFOLDER]&quot;"
+                  Return="ignore" />
+
+    <InstallExecuteSequence>
+      <Custom Action="InstallPyRevit" After="InstallFiles">NOT Installed AND NOT REMOVE</Custom>
+      <Custom Action="RegisterExtension" After="InstallPyRevit">NOT Installed AND NOT REMOVE</Custom>
+      <Custom Action="UnregisterExtension" Before="RemoveFiles">REMOVE="ALL"</Custom>
+    </InstallExecuteSequence>
+
+    <Feature Id="MainFeature" Title="CPSK Tools for Revit" Level="1">
+      <ComponentGroupRef Id="ExtensionFiles" />
+      <ComponentGroupRef Id="ToolsComponents" />
+      <ComponentGroupRef Id="RegistryComponents" />
+    </Feature>
+
+    <ui:WixUI Id="WixUI_InstallDir" />
+
+  </Package>
+</Wix>

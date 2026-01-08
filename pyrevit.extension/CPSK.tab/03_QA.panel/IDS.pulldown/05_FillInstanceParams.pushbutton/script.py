@@ -20,7 +20,6 @@ import System
 from System.Windows.Forms import (
     Form, Label, Button, ComboBox, ListBox, TextBox,
     FormStartPosition, FormBorderStyle,
-    MessageBox, MessageBoxButtons, MessageBoxIcon,
     DialogResult, OpenFileDialog, GroupBox
 )
 from System.Drawing import Point, Size, Color
@@ -33,8 +32,16 @@ LIB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.d
 if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
 
-# Проверка окружения
+# Импорт модулей из lib
+from cpsk_notify import show_error, show_warning, show_info, show_success, show_confirm
+from cpsk_auth import require_auth
 from cpsk_config import require_environment
+
+# Проверка авторизации
+if not require_auth():
+    sys.exit()
+
+# Проверка окружения
 if not require_environment():
     sys.exit()
 
@@ -396,13 +403,10 @@ class FillInstanceParamsForm(Form):
             self.filtered_ids_params = self.ids_params[:]
             self.update_ids_list()
 
-            MessageBox.Show(
-                "IDS загружен: {} параметров с допустимыми значениями".format(len(self.ids_params)),
-                "IDS", MessageBoxButtons.OK, MessageBoxIcon.Information)
+            show_info("IDS", "IDS загружен: {} параметров с допустимыми значениями".format(len(self.ids_params)))
         except Exception as e:
-            MessageBox.Show(
-                "Ошибка загрузки IDS: {}".format(str(e)),
-                "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error)
+            show_error("Ошибка", "Ошибка загрузки IDS",
+                       details=str(e))
 
     def update_ids_list(self):
         """Обновить список параметров IDS."""
@@ -498,18 +502,21 @@ class FillInstanceParamsForm(Form):
 
             t.Commit()
 
-            msg = "Обновлено элементов: {}".format(updated)
+            details = ""
             if errors:
-                msg += "\n\nОшибки: {}".format(len(errors))
+                details = "Ошибки: {}".format(len(errors))
 
-            MessageBox.Show(msg, "Результат", MessageBoxButtons.OK,
-                          MessageBoxIcon.Information if updated > 0 else MessageBoxIcon.Warning)
+            if updated > 0:
+                show_success("Результат", "Обновлено элементов: {}".format(updated),
+                             details=details if details else None)
+            else:
+                show_warning("Результат", "Элементы не обновлены",
+                             details=details if details else None)
 
         except Exception as e:
             t.RollBack()
-            MessageBox.Show(
-                "Ошибка: {}".format(str(e)),
-                "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error)
+            show_error("Ошибка", "Ошибка применения значения",
+                       details=str(e))
 
     def on_close(self, sender, args):
         """Закрыть форму."""
@@ -523,13 +530,7 @@ if __name__ == "__main__":
 
     if not elements:
         # Предложить выбрать элементы
-        result = MessageBox.Show(
-            "Элементы не выбраны. Выбрать сейчас?",
-            "Выбор элементов",
-            MessageBoxButtons.YesNo,
-            MessageBoxIcon.Question)
-
-        if result == DialogResult.Yes:
+        if show_confirm("Выбор элементов", "Элементы не выбраны. Выбрать сейчас?"):
             try:
                 selection = uidoc.Selection
                 refs = selection.PickObjects(ObjectType.Element, "Выберите элементы")
@@ -539,11 +540,7 @@ if __name__ == "__main__":
                 elements = []
 
     if not elements:
-        MessageBox.Show(
-            "Элементы не выбраны. Операция отменена.",
-            "Внимание",
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Warning)
+        show_warning("Внимание", "Элементы не выбраны. Операция отменена.")
     else:
         form = FillInstanceParamsForm(elements)
         form.ShowDialog()

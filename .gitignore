@@ -26,3 +26,15 @@ setup_env.log
 
 
 rocket-revit-master
+
+# Build artifacts
+build/
+*.msi
+*.wixobj
+*.wixpdb
+installer/files.wxs
+
+# Logs
+*.log
+CPSK_Install.log
+CPSK_Uninstall.log

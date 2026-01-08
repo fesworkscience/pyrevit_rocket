@@ -24,7 +24,6 @@ import System
 from System.Windows.Forms import (
     Form, Label, Button, Panel, ComboBox, CheckBox,
     DockStyle, FormStartPosition, FormBorderStyle,
-    MessageBox, MessageBoxButtons, MessageBoxIcon,
     DialogResult, OpenFileDialog, SaveFileDialog,
     GroupBox, TextBox, ListBox, SelectionMode
 )
@@ -38,8 +37,16 @@ LIB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.d
 if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
 
-# Проверка окружения
+# Импорт модулей из lib
+from cpsk_notify import show_error, show_warning, show_info, show_success, show_confirm
+from cpsk_auth import require_auth
 from cpsk_config import require_environment
+
+# Проверка авторизации
+if not require_auth():
+    sys.exit()
+
+# Проверка окружения
 if not require_environment():
     sys.exit()
 
@@ -637,12 +644,7 @@ class IFCConfigForm(Form):
     def on_save_config(self, sender, args):
         """Сохранить выбранную конфигурацию в JSON."""
         if not self.selected_config:
-            MessageBox.Show(
-                "Выберите конфигурацию для сохранения",
-                "Внимание",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Warning
-            )
+            show_warning("Внимание", "Выберите конфигурацию для сохранения")
             return
 
         dialog = SaveFileDialog()
@@ -656,29 +658,16 @@ class IFCConfigForm(Form):
         if dialog.ShowDialog() == DialogResult.OK:
             success, error = save_config_to_json(self.selected_config, dialog.FileName)
             if success:
-                MessageBox.Show(
-                    "Конфигурация сохранена:\n{}".format(dialog.FileName),
-                    "Готово",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information
-                )
+                show_success("Готово", "Конфигурация сохранена",
+                             details="Путь: {}".format(dialog.FileName))
             else:
-                MessageBox.Show(
-                    "Ошибка: {}".format(error),
-                    "Ошибка",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error
-                )
+                show_error("Ошибка", "Ошибка сохранения конфигурации",
+                           details=error)
 
     def on_show_details(self, sender, args):
         """Показать детали конфигурации."""
         if not self.selected_config:
-            MessageBox.Show(
-                "Выберите конфигурацию",
-                "Внимание",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Warning
-            )
+            show_warning("Внимание", "Выберите конфигурацию")
             return
 
         output.print_md("# Детали конфигурации IFC")
@@ -693,12 +682,7 @@ class IFCConfigForm(Form):
                 val_str = str(value)
             output.print_md("- **{}**: {}".format(key, val_str))
 
-        MessageBox.Show(
-            "Детали выведены в окно pyRevit",
-            "Готово",
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Information
-        )
+        show_info("Готово", "Детали выведены в окно pyRevit")
 
     def on_browse_mapping(self, sender, args):
         """Выбрать файл маппинга."""
@@ -750,35 +734,21 @@ class IFCConfigForm(Form):
                 output.print_md("")
                 output.print_md("Теперь укажите новое имя и файл маппинга.")
             else:
-                MessageBox.Show(
-                    "Ошибка загрузки: {}".format(error),
-                    "Ошибка",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error
-                )
+                show_error("Ошибка", "Ошибка загрузки конфигурации",
+                           details=error)
 
     def on_create_config(self, sender, args):
         """Создать новую конфигурацию на основе базовой и сохранить в Revit."""
         if not self.base_config:
-            MessageBox.Show(
-                "Сначала загрузите базовую конфигурацию!",
-                "Внимание",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Warning
-            )
+            show_warning("Внимание", "Сначала загрузите базовую конфигурацию!")
             return
 
         mapping_path = self.txt_mapping.Text.strip()
         config_name = self.txt_config_name.Text.strip() or "CPSK_Export"
 
         if mapping_path and not os.path.exists(mapping_path):
-            result = MessageBox.Show(
-                "Файл маппинга не существует:\n{}\n\nПродолжить без файла маппинга?".format(mapping_path),
-                "Внимание",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning
-            )
-            if result != DialogResult.Yes:
+            if not show_confirm("Внимание", "Продолжить без файла маппинга?",
+                                details="Файл маппинга не существует:\n{}".format(mapping_path)):
                 return
             mapping_path = ""
 
@@ -799,18 +769,13 @@ class IFCConfigForm(Form):
         success, error = save_ifc_config_to_storage(config)
 
         if success:
-            msg = "Конфигурация '{}' создана в Revit!\n\n".format(config_name)
-            msg += "Изменения относительно базовой '{}':\n".format(old_name)
-            msg += "- Имя: {}\n".format(config_name)
-            msg += "- Маппинг: {}\n\n".format(mapping_path or "(нет)")
-            msg += "Конфигурация доступна в диалоге экспорта IFC."
+            details = "Изменения относительно базовой '{}':\n".format(old_name)
+            details += "- Имя: {}\n".format(config_name)
+            details += "- Маппинг: {}\n\n".format(mapping_path or "(нет)")
+            details += "Конфигурация доступна в диалоге экспорта IFC."
 
-            MessageBox.Show(
-                msg,
-                "Готово",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information
-            )
+            show_success("Готово", "Конфигурация '{}' создана в Revit!".format(config_name),
+                         details=details)
 
             # Показать в output
             output.print_md("# Создана конфигурация IFC в Revit")
@@ -829,12 +794,8 @@ class IFCConfigForm(Form):
             # Обновить список конфигураций
             self.load_configs()
         else:
-            MessageBox.Show(
-                "Ошибка создания конфигурации:\n{}".format(error),
-                "Ошибка",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error
-            )
+            show_error("Ошибка", "Ошибка создания конфигурации",
+                       details=error)
 
     def on_close(self, sender, args):
         """Закрыть форму."""
@@ -845,7 +806,7 @@ class IFCConfigForm(Form):
 
 if __name__ == "__main__":
     if doc is None:
-        forms.alert("Откройте документ Revit", title="Ошибка")
+        show_error("Ошибка", "Откройте документ Revit")
     else:
         form = IFCConfigForm()
         form.ShowDialog()

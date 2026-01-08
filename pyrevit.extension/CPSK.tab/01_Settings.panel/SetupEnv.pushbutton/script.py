@@ -22,12 +22,13 @@ import System
 from System.Windows.Forms import (
     Form, Label, TextBox, Button, ProgressBar,
     FormStartPosition, FormBorderStyle,
-    MessageBox, MessageBoxButtons, MessageBoxIcon,
     GroupBox, ProgressBarStyle
 )
 from System.Drawing import Point, Size, Color, Font, FontStyle
 
 from pyrevit import script, forms
+
+from cpsk_notify import show_error, show_info, show_success, show_confirm
 
 # Добавляем lib в путь
 SCRIPT_DIR = os.path.dirname(__file__)
@@ -35,6 +36,12 @@ EXTENSION_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
 LIB_DIR = os.path.join(EXTENSION_DIR, "lib")
 if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
+
+# Проверка авторизации
+from cpsk_auth import require_auth
+if not require_auth():
+    import sys as _sys
+    _sys.exit()
 
 from cpsk_config import (
     get_setting, set_setting,
@@ -353,19 +360,13 @@ class SetupEnvForm(Form):
         venv_path = get_venv_path()
 
         if not os.path.exists(venv_path):
-            MessageBox.Show(
-                "Окружение не найдено:\n{}".format(venv_path),
-                "Информация",
-                MessageBoxButtons.OK, MessageBoxIcon.Information)
+            show_info("Информация", "Окружение не найдено",
+                      details="Путь: {}".format(venv_path))
             return
 
         # Подтверждение
-        result = MessageBox.Show(
-            "Удалить виртуальное окружение?\n\n{}".format(venv_path),
-            "Подтверждение",
-            MessageBoxButtons.YesNo, MessageBoxIcon.Question)
-
-        if result != System.Windows.Forms.DialogResult.Yes:
+        if not show_confirm("Подтверждение", "Удалить виртуальное окружение?",
+                            details="Путь: {}".format(venv_path)):
             return
 
         try:
@@ -381,18 +382,13 @@ class SetupEnvForm(Form):
             self.lbl_progress.Text = "Окружение удалено"
             self.lbl_progress.ForeColor = Color.Green
 
-            MessageBox.Show(
-                "Окружение успешно удалено.",
-                "Готово",
-                MessageBoxButtons.OK, MessageBoxIcon.Information)
+            show_success("Готово", "Окружение успешно удалено")
 
         except Exception as e:
             self.lbl_progress.Text = "Ошибка удаления"
             self.lbl_progress.ForeColor = Color.Red
-            MessageBox.Show(
-                "Ошибка удаления:\n{}".format(str(e)),
-                "Ошибка",
-                MessageBoxButtons.OK, MessageBoxIcon.Error)
+            show_error("Ошибка", "Ошибка удаления окружения",
+                       details=str(e))
 
     def run_command(self, cmd, description, log_lines):
         """Выполнить команду с логированием."""
@@ -463,17 +459,13 @@ class SetupEnvForm(Form):
         log_lines.append("")
 
         if not python_path or not os.path.exists(python_path):
-            MessageBox.Show(
-                "Укажите корректный путь к Python!",
-                "Ошибка",
-                MessageBoxButtons.OK, MessageBoxIcon.Error)
+            show_error("Ошибка", "Укажите корректный путь к Python!",
+                       details="Указанный путь: {}".format(python_path))
             return
 
         if not os.path.exists(req_path):
-            MessageBox.Show(
-                "Файл requirements.txt не найден:\n{}".format(req_path),
-                "Ошибка",
-                MessageBoxButtons.OK, MessageBoxIcon.Error)
+            show_error("Ошибка", "Файл requirements.txt не найден",
+                       details="Путь: {}".format(req_path))
             return
 
         # Сохраняем путь к Python
@@ -581,10 +573,8 @@ class SetupEnvForm(Form):
             self.lbl_progress.Text = "Установка завершена!"
             self.lbl_progress.ForeColor = Color.Green
 
-            MessageBox.Show(
-                "Окружение успешно установлено!\n\nПуть: {}\nЛог: {}".format(venv_path, log_path),
-                "Готово",
-                MessageBoxButtons.OK, MessageBoxIcon.Information)
+            show_success("Готово", "Окружение успешно установлено!",
+                         details="Путь: {}\nЛог: {}".format(venv_path, log_path))
 
         except Exception as e:
             self.stop_progress()
@@ -598,10 +588,8 @@ class SetupEnvForm(Form):
                 log_path = self.save_log(log_lines, success=False)
                 error_msg = "{}\n\nЛог: {}".format(error_msg, log_path)
 
-            MessageBox.Show(
-                "Ошибка:\n{}".format(error_msg),
-                "Ошибка",
-                MessageBoxButtons.OK, MessageBoxIcon.Error)
+            show_error("Ошибка", "Ошибка установки окружения",
+                       details=error_msg)
 
     def start_progress(self, message):
         """Показать прогресс."""

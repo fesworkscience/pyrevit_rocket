@@ -19,6 +19,10 @@ pyRevit Universal Code Checker
     - yield from (не поддерживается)
     - nonlocal (не поддерживается)
     - расширенная распаковка *rest (не поддерживается)
+    - except без show_error (предупреждение)
+    - неправильная работа с cpsk_settings.yaml (использовать cpsk_config)
+    - отсутствие проверки авторизации require_auth() в скриптах кнопок
+    - использование MessageBox.Show или forms.alert (использовать cpsk_notify)
 """
 
 import sys
@@ -90,6 +94,10 @@ class PyRevitChecker:
         self.check_yield_from(lines)
         self.check_nonlocal(lines)
         self.check_unpacking(lines)
+        self.check_except_without_notify(lines, content)
+        self.check_config_usage(lines, content)
+        self.check_require_auth(lines, content)
+        self.check_notification_usage(lines, content)
 
         return len(self.errors) == 0
 
@@ -213,6 +221,198 @@ class PyRevitChecker:
             if re.search(r'^\s*\w+\s*,\s*\*\w+\s*=', code_part):
                 self.errors.append(
                     "Строка {}: Расширенная распаковка (*rest) не поддерживается.".format(i)
+                )
+
+    def check_except_without_notify(self, lines, content):
+        """Проверить except блоки без show_error (предупреждение)."""
+        # Проверяем импортирован ли show_error
+        has_show_error_import = bool(re.search(r'from\s+cpsk_notify\s+import.*show_error', content))
+
+        # Пропускаем файлы библиотек (cpsk_*.py, pyrevit_checker.py)
+        filename = os.path.basename(self.current_file) if self.current_file else ""
+        if filename.startswith('cpsk_') or filename == 'pyrevit_checker.py':
+            return
+
+        # Ищем блоки except
+        in_except = False
+        except_line = 0
+        except_indent = 0
+        has_notify_in_block = False
+
+        for i, line in enumerate(lines, 1):
+            stripped = line.lstrip()
+            current_indent = len(line) - len(stripped)
+
+            # Начало except блока
+            if re.match(r'except\s*.*:', stripped):
+                # Если был предыдущий except без notify - добавляем предупреждение
+                if in_except and not has_notify_in_block:
+                    self.warnings.append(
+                        "Строка {}: except без show_error(). Добавьте уведомление пользователю.".format(except_line)
+                    )
+
+                in_except = True
+                except_line = i
+                except_indent = current_indent
+                has_notify_in_block = False
+                continue
+
+            # Внутри except блока
+            if in_except:
+                # Проверяем выход из блока (меньший или равный отступ, не пустая строка)
+                if stripped and current_indent <= except_indent and not stripped.startswith('#'):
+                    # Конец except блока
+                    if not has_notify_in_block:
+                        self.warnings.append(
+                            "Строка {}: except без show_error(). Добавьте уведомление пользователю.".format(except_line)
+                        )
+                    in_except = False
+
+                    # Проверяем, может это новый except
+                    if re.match(r'except\s*.*:', stripped):
+                        in_except = True
+                        except_line = i
+                        except_indent = current_indent
+                        has_notify_in_block = False
+
+                # Проверяем наличие notify внутри блока
+                if 'show_error' in line or 'show_warning' in line or 'MessageBox.Show' in line:
+                    has_notify_in_block = True
+                # output.print_md тоже видно пользователю (pyRevit output)
+                if 'output.print_md' in line or 'forms.alert' in line:
+                    has_notify_in_block = True
+                # pass, return, raise - допустимые варианты без notify
+                if re.match(r'\s*(pass|return|raise)\b', line):
+                    has_notify_in_block = True
+
+        # Проверяем последний except если файл закончился
+        if in_except and not has_notify_in_block:
+            self.warnings.append(
+                "Строка {}: except без show_error(). Добавьте уведомление пользователю.".format(except_line)
+            )
+
+    def check_config_usage(self, lines, content):
+        """Проверить правильность работы с конфигом cpsk_settings.yaml."""
+        # Пропускаем сам модуль cpsk_config.py
+        filename = os.path.basename(self.current_file) if self.current_file else ""
+        if filename == 'cpsk_config.py':
+            return
+
+        # Проверяем наличие импорта cpsk_config
+        has_cpsk_config_import = bool(re.search(r'from\s+cpsk_config\s+import', content))
+
+        # Паттерны неправильного использования конфига
+        bad_patterns = [
+            # Прямое чтение/запись cpsk_settings.yaml
+            (r'["\']cpsk_settings\.yaml["\']', "Прямой доступ к cpsk_settings.yaml. Используйте cpsk_config."),
+            # Функции _read_config, _save_config (кроме cpsk_config.py)
+            (r'def\s+_read_config\s*\(', "Функция _read_config(). Используйте cpsk_config.get_setting()."),
+            (r'def\s+_save_config\s*\(', "Функция _save_config(). Используйте cpsk_config.set_setting()."),
+            # yaml.load/dump с settings
+            (r'yaml\.(safe_)?load.*settings', "yaml.load() для настроек. Используйте cpsk_config."),
+            (r'yaml\.(safe_)?dump.*settings', "yaml.dump() для настроек. Используйте cpsk_config."),
+        ]
+
+        for i, line in enumerate(lines, 1):
+            code_part = line.split('#')[0]
+            for pattern, message in bad_patterns:
+                if re.search(pattern, code_part, re.IGNORECASE):
+                    self.errors.append(
+                        "Строка {}: {}".format(i, message)
+                    )
+
+        # Проверяем использование настроек без импорта cpsk_config
+        settings_usage_patterns = [
+            r'auth\.token',
+            r'auth\.email',
+            r'environment\.',
+            r'notifications\.',
+        ]
+
+        if not has_cpsk_config_import:
+            for i, line in enumerate(lines, 1):
+                code_part = line.split('#')[0]
+                for pattern in settings_usage_patterns:
+                    if re.search(pattern, code_part):
+                        self.warnings.append(
+                            "Строка {}: Использование настроек без импорта cpsk_config.".format(i)
+                        )
+                        break
+
+    def check_require_auth(self, lines, content):
+        """Проверить наличие проверки авторизации в скриптах кнопок."""
+        if not self.current_file:
+            return
+
+        filepath = self.current_file
+        filename = os.path.basename(filepath)
+
+        # Проверяем только script.py в .pushbutton папках
+        if '.pushbutton' not in filepath:
+            return
+
+        # Проверяем только script.py (не вспомогательные модули)
+        if filename != 'script.py':
+            return
+
+        # Пропускаем Login.pushbutton - ему не нужна проверка авторизации
+        if 'Login.pushbutton' in filepath:
+            return
+
+        # Пропускаем файлы в lib/ (библиотеки)
+        if '\\lib\\' in filepath or '/lib/' in filepath:
+            return
+
+        # Проверяем наличие импорта require_auth
+        has_require_auth_import = bool(re.search(
+            r'from\s+cpsk_auth\s+import.*require_auth',
+            content
+        ))
+
+        # Проверяем вызов require_auth()
+        has_require_auth_call = bool(re.search(
+            r'require_auth\s*\(',
+            content
+        ))
+
+        if not has_require_auth_import:
+            self.warnings.append(
+                "Скрипт кнопки без проверки авторизации. Добавьте: from cpsk_auth import require_auth"
+            )
+        elif not has_require_auth_call:
+            self.warnings.append(
+                "Импорт require_auth есть, но функция не вызывается. Добавьте проверку в начале скрипта."
+            )
+
+    def check_notification_usage(self, lines, content):
+        """Проверить использование единой системы уведомлений cpsk_notify."""
+        if not self.current_file:
+            return
+
+        filename = os.path.basename(self.current_file)
+
+        # Пропускаем библиотечные файлы
+        if filename.startswith('cpsk_') or filename == 'pyrevit_checker.py':
+            return
+
+        # Пропускаем startup.py (там fallback на случай если cpsk_notify недоступен)
+        if filename == 'startup.py':
+            return
+
+        # Ищем использование MessageBox.Show
+        for i, line in enumerate(lines, 1):
+            code_part = line.split('#')[0]
+
+            # MessageBox.Show (кроме импортов)
+            if 'MessageBox.Show' in code_part and 'import' not in code_part.lower():
+                self.warnings.append(
+                    "Строка {}: MessageBox.Show запрещён. Используйте cpsk_notify.show_error/warning/info/success".format(i)
+                )
+
+            # forms.alert
+            if 'forms.alert' in code_part and 'import' not in code_part.lower():
+                self.warnings.append(
+                    "Строка {}: forms.alert запрещён. Используйте cpsk_notify.show_error/warning/info/success".format(i)
                 )
 
     def get_report(self):

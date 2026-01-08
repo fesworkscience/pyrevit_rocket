@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
 """
 Login - Авторизация пользователя.
-Заглушка для будущей реализации.
+Вход/выход из системы CPSK.
 """
 
 __title__ = "Логин"
 __author__ = "CPSK"
 
 import clr
+import os
+import sys
 
 clr.AddReference('System.Windows.Forms')
 clr.AddReference('System.Drawing')
@@ -16,12 +18,19 @@ import System
 from System.Windows.Forms import (
     Form, Label, TextBox, Button, Panel, CheckBox,
     DockStyle, FormStartPosition, FormBorderStyle,
-    MessageBox, MessageBoxButtons, MessageBoxIcon,
-    DialogResult
+    Application, Cursor, Cursors
 )
 from System.Drawing import Point, Size, Color, Font, FontStyle
 
 from pyrevit import script
+
+# Добавляем lib в путь если нужно
+lib_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "lib")
+if lib_path not in sys.path:
+    sys.path.insert(0, lib_path)
+
+from cpsk_auth import AuthService
+from cpsk_notify import show_error, show_success, show_info, show_confirm
 
 output = script.get_output()
 
@@ -82,18 +91,10 @@ class LoginForm(Form):
         self.txt_password.Location = Point(20, y)
         self.txt_password.Width = 320
         self.txt_password.PasswordChar = '*'
+        self.txt_password.KeyDown += self.on_key_down
         self.Controls.Add(self.txt_password)
 
-        y += 35
-
-        # Запомнить меня
-        self.chk_remember = CheckBox()
-        self.chk_remember.Text = "Запомнить меня"
-        self.chk_remember.Location = Point(20, y)
-        self.chk_remember.AutoSize = True
-        self.Controls.Add(self.chk_remember)
-
-        y += 35
+        y += 40
 
         # Кнопки
         self.btn_login = Button()
@@ -115,9 +116,14 @@ class LoginForm(Form):
         self.lbl_status = Label()
         self.lbl_status.Text = ""
         self.lbl_status.Location = Point(20, y)
-        self.lbl_status.Size = Size(320, 20)
+        self.lbl_status.Size = Size(320, 40)
         self.lbl_status.ForeColor = Color.Gray
         self.Controls.Add(self.lbl_status)
+
+    def on_key_down(self, sender, args):
+        """Обработка Enter в поле пароля."""
+        if args.KeyCode == System.Windows.Forms.Keys.Enter:
+            self.on_login_click(sender, args)
 
     def on_login_click(self, sender, args):
         """Обработчик кнопки Войти."""
@@ -134,25 +140,139 @@ class LoginForm(Form):
             self.lbl_status.ForeColor = Color.Red
             return
 
-        # TODO: Реальная авторизация
-        self.lbl_status.Text = "Функция в разработке..."
-        self.lbl_status.ForeColor = Color.Orange
+        # Показываем статус загрузки
+        self.lbl_status.Text = "Подключение к серверу..."
+        self.lbl_status.ForeColor = Color.Gray
+        self.btn_login.Enabled = False
+        self.Cursor = Cursors.WaitCursor
+        Application.DoEvents()
 
-        MessageBox.Show(
-            "Авторизация пока не реализована.\n\n"
-            "Email: {}\n"
-            "Запомнить: {}".format(email, "Да" if self.chk_remember.Checked else "Нет"),
-            "В разработке",
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Information
-        )
+        try:
+            # Выполняем авторизацию (возвращает 3 значения: success, error, details)
+            result = AuthService.login(email, password)
+            success = result[0]
+            error = result[1] if len(result) > 1 else None
+            details = result[2] if len(result) > 2 else None
+
+            if success:
+                self.lbl_status.Text = "Успешный вход!"
+                self.lbl_status.ForeColor = Color.Green
+                Application.DoEvents()
+
+                self.result = True
+                self.Close()
+
+                # Показываем уведомление после закрытия формы
+                show_success(
+                    "Авторизация успешна",
+                    "Добро пожаловать, {}!".format(email)
+                )
+            else:
+                self.lbl_status.Text = error or "Ошибка авторизации"
+                self.lbl_status.ForeColor = Color.Red
+
+                # Показываем детальную ошибку
+                show_error(
+                    "Ошибка авторизации",
+                    error or "Не удалось войти в систему",
+                    details
+                )
+
+        except Exception as e:
+            self.lbl_status.Text = "Ошибка: {}".format(str(e))
+            self.lbl_status.ForeColor = Color.Red
+
+            show_error(
+                "Ошибка",
+                "Произошла непредвиденная ошибка",
+                str(e)
+            )
+
+        finally:
+            self.btn_login.Enabled = True
+            self.Cursor = Cursors.Default
 
     def on_cancel_click(self, sender, args):
         """Закрыть форму."""
         self.Close()
 
 
+class LoggedInForm(Form):
+    """Диалог для авторизованного пользователя."""
+
+    def __init__(self, username):
+        self.username = username
+        self.setup_form()
+
+    def setup_form(self):
+        """Настройка формы."""
+        self.Text = "CPSK - Профиль"
+        self.Width = 350
+        self.Height = 180
+        self.StartPosition = FormStartPosition.CenterScreen
+        self.FormBorderStyle = FormBorderStyle.FixedDialog
+        self.MaximizeBox = False
+        self.MinimizeBox = False
+
+        y = 20
+
+        # Заголовок
+        lbl_title = Label()
+        lbl_title.Text = "Вы авторизованы"
+        lbl_title.Location = Point(20, y)
+        lbl_title.Size = Size(290, 25)
+        lbl_title.Font = Font(lbl_title.Font.FontFamily, 12, FontStyle.Bold)
+        self.Controls.Add(lbl_title)
+
+        y += 35
+
+        # Имя пользователя
+        lbl_user = Label()
+        lbl_user.Text = "Пользователь: {}".format(self.username)
+        lbl_user.Location = Point(20, y)
+        lbl_user.Size = Size(290, 20)
+        self.Controls.Add(lbl_user)
+
+        y += 40
+
+        # Кнопки
+        btn_logout = Button()
+        btn_logout.Text = "Выйти"
+        btn_logout.Location = Point(20, y)
+        btn_logout.Size = Size(100, 30)
+        btn_logout.Click += self.on_logout_click
+        self.Controls.Add(btn_logout)
+
+        btn_close = Button()
+        btn_close.Text = "Закрыть"
+        btn_close.Location = Point(210, y)
+        btn_close.Size = Size(100, 30)
+        btn_close.Click += self.on_close_click
+        self.Controls.Add(btn_close)
+
+    def on_logout_click(self, sender, args):
+        """Выход из системы."""
+        if not show_confirm("Подтверждение", "Вы уверены, что хотите выйти?"):
+            return
+
+        AuthService.logout()
+        show_info("Выход", "Вы вышли из системы")
+        self.Close()
+
+    def on_close_click(self, sender, args):
+        """Закрыть форму."""
+        self.Close()
+
+
 # === MAIN ===
 if __name__ == "__main__":
-    form = LoginForm()
-    form.ShowDialog()
+    # Проверяем статус авторизации
+    if AuthService.is_authenticated():
+        # Уже авторизован - показываем профиль
+        username = AuthService.get_username()
+        form = LoggedInForm(username)
+        form.ShowDialog()
+    else:
+        # Не авторизован - показываем форму входа
+        form = LoginForm()
+        form.ShowDialog()

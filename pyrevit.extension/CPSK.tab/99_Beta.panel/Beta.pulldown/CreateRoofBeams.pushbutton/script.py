@@ -4,9 +4,11 @@
 __title__ = "Roof\nBeams"
 __author__ = "CPSK"
 
-import clr
+import os
+import sys
 import math
 
+import clr
 clr.AddReference('System.Windows.Forms')
 clr.AddReference('System.Drawing')
 clr.AddReference('RevitAPI')
@@ -18,6 +20,18 @@ from pyrevit import revit, forms, script
 
 import System.Windows.Forms as WinForms
 import System.Drawing as Drawing
+
+# Добавляем lib в путь для импорта cpsk_auth
+SCRIPT_DIR = os.path.dirname(__file__)
+LIB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))), "lib")
+if LIB_DIR not in sys.path:
+    sys.path.insert(0, LIB_DIR)
+
+# Проверка авторизации
+from cpsk_auth import require_auth
+from cpsk_notify import show_error, show_warning
+if not require_auth():
+    sys.exit()
 
 doc = revit.doc
 uidoc = revit.uidoc
@@ -191,12 +205,7 @@ class RoofBeamsForm(WinForms.Form):
             self.DialogResult = WinForms.DialogResult.OK
             self.Close()
         except ValueError as e:
-            WinForms.MessageBox.Show(
-                "Invalid input: " + str(e),
-                "Error",
-                WinForms.MessageBoxButtons.OK,
-                WinForms.MessageBoxIcon.Error
-            )
+            show_error("Ошибка", "Неверный ввод", details=str(e))
 
     def on_cancel(self, sender, args):
         self.DialogResult = WinForms.DialogResult.Cancel
@@ -251,7 +260,7 @@ def create_roof_beams(params):
     level_id = params['level_id']
 
     if not beam_type_id:
-        forms.alert("No beam type selected!")
+        show_warning("Балки крыши", "Не выбран тип балки!")
         return 0
 
     beam_type = doc.GetElement(beam_type_id)
@@ -304,11 +313,7 @@ if __name__ == "__main__":
         .WhereElementIsElementType()
 
     if not list(collector):
-        forms.alert(
-            "No structural framing families loaded!\n\n"
-            "Please load a beam family first.",
-            title="No Beam Types"
-        )
+        show_warning("Балки крыши", "В проекте нет семейств балок!\nЗагрузите семейство балок.")
     else:
         form = RoofBeamsForm()
         result = form.ShowDialog()

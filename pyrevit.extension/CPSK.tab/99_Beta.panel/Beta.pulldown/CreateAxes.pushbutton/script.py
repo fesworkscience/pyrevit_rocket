@@ -4,6 +4,9 @@
 __title__ = "Create\nAxes"
 __author__ = "CPSK"
 
+import os
+import sys
+
 import clr
 clr.AddReference('System.Windows.Forms')
 clr.AddReference('System.Drawing')
@@ -14,6 +17,18 @@ from pyrevit import revit, forms, script
 
 import System.Windows.Forms as WinForms
 import System.Drawing as Drawing
+
+# Добавляем lib в путь для импорта cpsk_auth
+SCRIPT_DIR = os.path.dirname(__file__)
+LIB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))), "lib")
+if LIB_DIR not in sys.path:
+    sys.path.insert(0, LIB_DIR)
+
+# Проверка авторизации
+from cpsk_auth import require_auth
+from cpsk_notify import show_error
+if not require_auth():
+    sys.exit()
 
 doc = revit.doc
 output = script.get_output()
@@ -114,12 +129,7 @@ class AxesForm(WinForms.Form):
             self.DialogResult = WinForms.DialogResult.OK
             self.Close()
         except ValueError as e:
-            WinForms.MessageBox.Show(
-                "Invalid input: " + str(e),
-                "Error",
-                WinForms.MessageBoxButtons.OK,
-                WinForms.MessageBoxIcon.Error
-            )
+            show_error("Ошибка", "Неверный ввод", details=str(e))
 
     def on_cancel(self, sender, args):
         self.DialogResult = WinForms.DialogResult.Cancel

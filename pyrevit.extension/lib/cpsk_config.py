@@ -692,16 +692,41 @@ def require_environment(show_message=True):
         return True
 
     if show_message:
+        details = """Для работы некоторых инструментов CPSK требуется Python окружение.
+
+Как установить окружение:
+1. Найдите панель "CPSK" на ленте Revit
+2. Перейдите в Settings → Окружение
+3. Нажмите кнопку "Установить окружение"
+4. Дождитесь завершения установки
+
+Окружение устанавливается один раз и сохраняется в:
+{}
+
+Если установка не удаётся, проверьте:
+- Наличие интернет-соединения
+- Права на запись в указанную папку
+- Наличие Python 3.x в системе""".format(VENV_BASE_DIR)
+
         try:
-            from pyrevit import forms
-            forms.alert(
-                "Окружение не установлено!\n\n"
-                "Перейдите в Settings → Окружение\n"
-                "и нажмите 'Установить окружение'.",
-                title="CPSK - Требуется настройка",
-                warn_icon=True
+            from cpsk_notify import show_warning
+            show_warning(
+                "Требуется настройка окружения",
+                "Python окружение не установлено. Перейдите в Settings → Окружение.",
+                details=details
             )
         except Exception:
-            pass
+            # Fallback на forms.alert
+            try:
+                from pyrevit import forms
+                forms.alert(
+                    "Окружение не установлено!\n\n"
+                    "Перейдите в Settings → Окружение\n"
+                    "и нажмите 'Установить окружение'.",
+                    title="CPSK - Требуется настройка",
+                    warn_icon=True
+                )
+            except Exception:
+                pass
 
     return False
