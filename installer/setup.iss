@@ -339,6 +339,56 @@ begin
   Result := True;
 end;
 
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  UninstallerPath: String;
+  ResultCode: Integer;
+  ExtensionPath: String;
+begin
+  Result := '';
+  NeedsRestart := False;
+
+  // Check for existing uninstaller
+  UninstallerPath := ExpandConstant('{localappdata}\CPSK\unins000.exe');
+  WriteLog('Checking for existing installation at: ' + UninstallerPath);
+
+  if FileExists(UninstallerPath) then
+  begin
+    WriteLog('Found existing installation. Running uninstaller...');
+
+    // Run uninstaller silently
+    if Exec(UninstallerPath, '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    begin
+      WriteLog('Uninstaller completed with exit code: ' + IntToStr(ResultCode));
+      // Wait a moment for files to be released
+      Sleep(1000);
+    end
+    else
+    begin
+      WriteLog('ERROR: Failed to run uninstaller');
+    end;
+  end
+  else
+  begin
+    WriteLog('No existing uninstaller found');
+  end;
+
+  // Clean up old extension folder if it exists (in case uninstaller didn't remove it)
+  ExtensionPath := ExpandConstant('{localappdata}\CPSK\CPSK.extension');
+  if DirExists(ExtensionPath) then
+  begin
+    WriteLog('Cleaning up old extension folder: ' + ExtensionPath);
+    if not DelTree(ExtensionPath, True, True, True) then
+    begin
+      WriteLog('WARNING: Could not fully remove old extension folder');
+    end
+    else
+    begin
+      WriteLog('Old extension folder removed successfully');
+    end;
+  end;
+end;
+
 function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoTypeInfo, MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
 begin
   Result := 'CPSK Tools v{#MyAppVersion} will be installed.' + NewLine + NewLine;
