@@ -84,7 +84,6 @@
 
     <UI>
       <UIRef Id="WixUI_Minimal" />
-      <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999">1</Publish>
     </UI>
 
   </Package>
