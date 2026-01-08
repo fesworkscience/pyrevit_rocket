@@ -40,9 +40,13 @@ if ($lastTag) {
 Write-Host "Last version: $lastTag" -ForegroundColor Cyan
 Write-Host "New version:  v$newVersion" -ForegroundColor Green
 
-"version: $newVersion`n" | Out-File -FilePath "version.yaml" -Encoding UTF8 -NoNewline
+# Get repo root directory
+$repoRoot = git rev-parse --show-toplevel
+$versionFile = Join-Path $repoRoot "version.yaml"
 
-git add version.yaml
+"version: $newVersion`n" | Out-File -FilePath $versionFile -Encoding UTF8 -NoNewline
+
+git add $versionFile
 git commit -m "Release v$newVersion"
 git tag "v$newVersion"
 
