@@ -87,7 +87,7 @@ jobs:
 
               # Minify with conservative options (no global rename to avoid breaking imports)
               $tempFile = "$($_.FullName).min"
-              python -m python_minifier $_.FullName --remove-literal-statements --remove-debug -o $tempFile
+              python -m python_minifier $_.FullName --remove-literal-statements --remove-debug --rename-locals -o $tempFile
 
               if (Test-Path $tempFile) {
                 Move-Item $tempFile $_.FullName -Force
