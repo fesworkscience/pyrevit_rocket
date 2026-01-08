@@ -35,6 +35,12 @@ DEFAULT_SETTINGS = {
     "notifications": {
         "show_startup_check": True,
         "show_env_warnings": True
+    },
+    "dynamo": {
+        "recent": [],
+        "favorites": [],
+        "run_counts": {},
+        "last_runs": {}
     }
 }
 

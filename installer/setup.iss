@@ -374,6 +374,7 @@ begin
   end;
 
   // Clean up old extension folder if it exists (in case uninstaller didn't remove it)
+  // Note: cpsk_settings.yaml is in root folder and will NOT be deleted
   ExtensionPath := ExpandConstant('{localappdata}\CPSK\CPSK.extension');
   if DirExists(ExtensionPath) then
   begin
@@ -408,6 +409,8 @@ begin
   if CurStep = ssPostInstall then
   begin
     WriteLog('=== Post-Install Step ===');
+    // All user configs are stored in cpsk_settings.yaml in root folder
+    // and are preserved during upgrade (not inside CPSK.extension)
     if RevitRunning then
       WriteLog('Revit was running during installation - user needs to restart Revit');
   end;

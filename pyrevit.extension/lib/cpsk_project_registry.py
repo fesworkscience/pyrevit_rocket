@@ -27,11 +27,12 @@ import re
 
 def _get_registry_path():
     """Получить путь к файлу реестра."""
-    appdata = os.environ.get("APPDATA", "")
-    if not appdata:
-        appdata = os.path.expanduser("~")
+    # Используем LOCALAPPDATA для согласованности с cpsk_settings.yaml
+    localappdata = os.environ.get("LOCALAPPDATA", "")
+    if not localappdata:
+        localappdata = os.path.expanduser("~")
 
-    registry_dir = os.path.join(appdata, "CPSK")
+    registry_dir = os.path.join(localappdata, "CPSK")
     if not os.path.exists(registry_dir):
         os.makedirs(registry_dir)
 

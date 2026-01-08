@@ -41,6 +41,7 @@ if LIB_DIR not in sys.path:
 # Импорт модулей из lib
 from cpsk_notify import show_error, show_info, show_success, show_warning, show_confirm
 from cpsk_auth import require_auth
+from cpsk_config import get_setting, set_setting
 
 # Проверка авторизации
 if not require_auth():
@@ -67,7 +68,8 @@ def find_urls(text):
 # Путь к папке со скриптами - в папке 02_Dynamo.panel
 PANEL_FOLDER = os.path.dirname(os.path.dirname(__file__))  # 02_Dynamo.panel
 SCRIPTS_FOLDER = os.path.join(PANEL_FOLDER, "dynamo_scripts")
-CONFIG_FILE = os.path.join(PANEL_FOLDER, "_config.yaml")
+
+# Конфиг хранится в cpsk_settings.yaml через cpsk_config
 MAX_RECENT = 20
 PAGE_SIZE = 100
 
@@ -961,7 +963,6 @@ class DynamoLauncherForm(Form):
 
     def __init__(self):
         self.scanner = ScriptScanner(SCRIPTS_FOLDER)
-        self.config = parse_yaml(CONFIG_FILE)
         self.current_scripts = []
         self.current_page = 0
         self.selected_script = None
@@ -974,32 +975,31 @@ class DynamoLauncherForm(Form):
         self.load_categories()
 
     def load_config(self):
-        """Загрузить конфигурацию."""
-        self.recent = self.config.get('recent', [])
+        """Загрузить конфигурацию из cpsk_settings.yaml."""
+        self.recent = get_setting("dynamo.recent", [])
         if not isinstance(self.recent, list):
             self.recent = []
 
-        self.favorites = self.config.get('favorites', [])
+        self.favorites = get_setting("dynamo.favorites", [])
         if not isinstance(self.favorites, list):
             self.favorites = []
 
         # Статистика запусков: {rel_path: count}
-        self.run_counts = self.config.get('run_counts', {})
+        self.run_counts = get_setting("dynamo.run_counts", {})
         if not isinstance(self.run_counts, dict):
             self.run_counts = {}
 
         # Даты последнего запуска: {rel_path: timestamp}
-        self.last_runs = self.config.get('last_runs', {})
+        self.last_runs = get_setting("dynamo.last_runs", {})
         if not isinstance(self.last_runs, dict):
             self.last_runs = {}
 
     def save_config(self):
-        """Сохранить конфигурацию."""
-        self.config['recent'] = self.recent[:MAX_RECENT]
-        self.config['favorites'] = self.favorites
-        self.config['run_counts'] = self.run_counts
-        self.config['last_runs'] = self.last_runs
-        save_yaml(CONFIG_FILE, self.config)
+        """Сохранить конфигурацию в cpsk_settings.yaml."""
+        set_setting("dynamo.recent", self.recent[:MAX_RECENT])
+        set_setting("dynamo.favorites", self.favorites)
+        set_setting("dynamo.run_counts", self.run_counts)
+        set_setting("dynamo.last_runs", self.last_runs)
 
     def setup_form(self):
         """Настройка формы."""
