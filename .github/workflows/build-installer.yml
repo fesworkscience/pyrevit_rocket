@@ -72,51 +72,100 @@ jobs:
           $source = "build\CPSK.extension"
           $output = "installer\files.wxs"
 
-          function Get-FileId($path) {
+          function Get-SafeId($path) {
             $hash = [System.BitConverter]::ToString([System.Security.Cryptography.MD5]::Create().ComputeHash([System.Text.Encoding]::UTF8.GetBytes($path))).Replace("-","").Substring(0,16)
-            return "F_$hash"
+            return $hash
           }
 
-          function Get-ComponentId($path) {
-            $hash = [System.BitConverter]::ToString([System.Security.Cryptography.MD5]::Create().ComputeHash([System.Text.Encoding]::UTF8.GetBytes($path))).Replace("-","").Substring(0,16)
-            return "C_$hash"
-          }
-
-          function Get-DirId($path) {
-            $hash = [System.BitConverter]::ToString([System.Security.Cryptography.MD5]::Create().ComputeHash([System.Text.Encoding]::UTF8.GetBytes($path))).Replace("-","").Substring(0,16)
-            return "D_$hash"
-          }
-
-          $xml = @"
-          <?xml version="1.0" encoding="UTF-8"?>
-          <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
-            <Fragment>
-              <ComponentGroup Id="ExtensionFiles">
-          "@
+          $directories = @{}
+          $components = @()
 
           Get-ChildItem -Path $source -Recurse -File | ForEach-Object {
             $relPath = $_.FullName.Substring((Get-Item $source).FullName.Length + 1)
-            $fileId = Get-FileId $relPath
-            $compId = Get-ComponentId $relPath
+            $relDir = Split-Path -Parent $relPath
+            $fileName = $_.Name
+
+            if ($relDir -and -not $directories.ContainsKey($relDir)) {
+              $directories[$relDir] = "D_" + (Get-SafeId $relDir)
+            }
+
+            $dirId = if ($relDir) { $directories[$relDir] } else { "EXTENSIONFOLDER" }
+            $fileId = "F_" + (Get-SafeId $relPath)
+            $compId = "C_" + (Get-SafeId $relPath)
             $srcPath = "`$(var.ExtensionSource)\$relPath"
 
-            $xml += @"
+            $components += @{
+              CompId = $compId
+              FileId = $fileId
+              DirId = $dirId
+              Source = $srcPath
+            }
+          }
 
-                <Component Id="$compId" Directory="EXTENSIONFOLDER" Guid="*">
-                  <File Id="$fileId" Source="$srcPath" KeyPath="yes" />
-                </Component>
-          "@
+          $xml = @"
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Fragment>
+    <DirectoryRef Id="EXTENSIONFOLDER">
+"@
+
+          $sortedDirs = $directories.GetEnumerator() | Sort-Object { $_.Key.Split('\').Count }, { $_.Key }
+          $createdDirs = @{}
+
+          foreach ($dir in $sortedDirs) {
+            $parts = $dir.Key.Split('\')
+            $parentId = "EXTENSIONFOLDER"
+            $currentPath = ""
+
+            for ($i = 0; $i -lt $parts.Count; $i++) {
+              $part = $parts[$i]
+              $currentPath = if ($currentPath) { "$currentPath\$part" } else { $part }
+
+              if (-not $createdDirs.ContainsKey($currentPath)) {
+                $dirId = if ($i -eq $parts.Count - 1) { $dir.Value } else { "D_" + (Get-SafeId $currentPath) }
+                $indent = "      " + ("  " * $i)
+                $xml += "`n$indent<Directory Id=`"$dirId`" Name=`"$part`">"
+                $createdDirs[$currentPath] = @{ Id = $dirId; Depth = $i }
+              }
+              $parentId = $createdDirs[$currentPath].Id
+            }
+          }
+
+          $maxDepth = ($createdDirs.Values | Measure-Object -Property Depth -Maximum).Maximum
+          if ($null -eq $maxDepth) { $maxDepth = -1 }
+          for ($d = $maxDepth; $d -ge 0; $d--) {
+            $dirsAtDepth = $createdDirs.GetEnumerator() | Where-Object { $_.Value.Depth -eq $d } | Sort-Object { $_.Key } -Descending
+            foreach ($dir in $dirsAtDepth) {
+              $indent = "      " + ("  " * $dir.Value.Depth)
+              $xml += "`n$indent</Directory>"
+            }
           }
 
           $xml += @"
 
-              </ComponentGroup>
-            </Fragment>
-          </Wix>
-          "@
+    </DirectoryRef>
+
+    <ComponentGroup Id="ExtensionFiles">
+"@
+
+          foreach ($comp in $components) {
+            $xml += @"
+
+      <Component Id="$($comp.CompId)" Directory="$($comp.DirId)" Guid="*">
+        <File Id="$($comp.FileId)" Source="$($comp.Source)" KeyPath="yes" />
+      </Component>
+"@
+          }
+
+          $xml += @"
+
+    </ComponentGroup>
+  </Fragment>
+</Wix>
+"@
 
           $xml | Out-File -FilePath $output -Encoding UTF8
-          Write-Host "Generated $output"
+          Write-Host "Generated $output with $($components.Count) files and $($directories.Count) directories"
 
       - name: Build MSI
         shell: pwsh
