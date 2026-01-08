@@ -97,5 +97,23 @@ if (Test-Path $markerFile) {
     Write-Log "pyRevit was not installed by CPSK - keeping it"
 }
 
+# Remove Python virtual environment
+$venvPath = "C:\cpsk_envs\pyrevit_rocket"
+if (Test-Path $venvPath) {
+    Write-Log "Removing Python virtual environment: $venvPath"
+    Remove-Item $venvPath -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Log "Virtual environment removed"
+}
+
+# Remove cpsk_envs folder if empty
+$envsPath = "C:\cpsk_envs"
+if (Test-Path $envsPath) {
+    $items = Get-ChildItem $envsPath -ErrorAction SilentlyContinue
+    if ($items.Count -eq 0) {
+        Remove-Item $envsPath -Force -ErrorAction SilentlyContinue
+        Write-Log "Removed empty cpsk_envs folder"
+    }
+}
+
 Write-Log "=== Uninstall complete ==="
 exit 0

@@ -30,7 +30,8 @@ Source: "..\build\CPSK.extension\*"; DestDir: "{app}\CPSK.extension"; Flags: ign
 Source: "..\build\Install-PyRevit.ps1"; DestDir: "{app}\tools"; Flags: ignoreversion
 Source: "..\build\Register-Extension.ps1"; DestDir: "{app}\tools"; Flags: ignoreversion
 Source: "..\build\Uninstall-CPSK.ps1"; DestDir: "{app}\tools"; Flags: ignoreversion
-Source: "..\build\version.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\build\requirements.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\build\version.yaml"; DestDir: "{app}"; Flags: ignoreversion
 
 [Dirs]
 Name: "{app}\logs"
