@@ -56,18 +56,23 @@ jobs:
           Invoke-WebRequest -Uri "https://github.com/IronLanguages/ironpython2/releases/download/ipy-2.7.12/IronPython.2.7.12.zip" -OutFile "ironpython.zip"
           Expand-Archive -Path "ironpython.zip" -DestinationPath "C:\IronPython" -Force
           Write-Host "IronPython installed to C:\IronPython"
-          Get-ChildItem "C:\IronPython" | Select-Object Name
+          Write-Host "Directory structure:"
+          Get-ChildItem "C:\IronPython" -Recurse -Depth 2 | Select-Object FullName
 
       - name: Compile Python modules to DLL
         shell: pwsh
         run: |
-          $ipy = "C:\IronPython\net45\ipy.exe"
-          $pyc = "C:\IronPython\net45\Tools\Scripts\pyc.py"
+          # Find ipy.exe
+          $ipyPath = Get-ChildItem "C:\IronPython" -Recurse -Filter "ipy.exe" | Select-Object -First 1
+          if (-not $ipyPath) {
+            Write-Host "ERROR: ipy.exe not found!"
+            exit 1
+          }
+          $ipy = $ipyPath.FullName
           $libDir = "build\CPSK.extension\lib"
 
           Write-Host "=== Compiling Python to DLL ==="
           Write-Host "IronPython: $ipy"
-          Write-Host "Compiler: $pyc"
           Write-Host "Lib directory: $libDir"
 
           # Modules to compile (exclude __init__.py and dev tools)
@@ -89,14 +94,27 @@ jobs:
           # Change to lib directory
           Push-Location $libDir
 
-          # Compile each module to separate DLL (IronPython pyc.py limitation)
+          # Compile each module using clr.CompileModules
           foreach ($module in $modulesToCompile) {
             $pyFile = "$module.py"
             $dllFile = "$module.dll"
 
             if (Test-Path $pyFile) {
               Write-Host "Compiling $pyFile -> $dllFile"
-              & $ipy $pyc /target:dll /out:$dllFile $pyFile 2>&1
+
+              # Create compilation script
+              $compileScript = "_compile_temp.py"
+              $compileCode = @(
+                "import clr",
+                "clr.CompileModules('$dllFile', '$pyFile')",
+                "print('Compiled successfully')"
+              ) -join "`n"
+              $compileCode | Out-File -FilePath $compileScript -Encoding UTF8
+
+              # Run compilation
+              $output = & $ipy $compileScript 2>&1
+              Write-Host $output
+              Remove-Item $compileScript -Force -ErrorAction SilentlyContinue
 
               if (Test-Path $dllFile) {
                 Write-Host "  [OK] Created $dllFile"
