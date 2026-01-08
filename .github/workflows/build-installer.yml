@@ -85,9 +85,9 @@ jobs:
               $originalSize = $_.Length
               Write-Host "Minifying: $($_.Name) ($originalSize bytes)"
 
-              # Minify: remove docstrings, debug statements; rename locals (default behavior)
+              # Minify with Python 2 compatible settings (no transforms that could break IronPython)
               $tempFile = "$($_.FullName).min"
-              python -m python_minifier $_.FullName --remove-literal-statements --remove-debug -o $tempFile
+              python -m python_minifier $_.FullName --remove-literal-statements --no-remove-annotations --no-hoist-literals --no-rename-locals --no-convert-posargs-to-args -o $tempFile
 
               if (Test-Path $tempFile) {
                 Move-Item $tempFile $_.FullName -Force
