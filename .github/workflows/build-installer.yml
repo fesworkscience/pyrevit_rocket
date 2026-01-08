@@ -65,6 +65,43 @@ jobs:
           Write-Host "Files in lib:"
           Get-ChildItem $libDir | ForEach-Object { Write-Host "  $($_.Name)" }
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Minify Python code
+        shell: pwsh
+        run: |
+          Write-Host "Installing python-minifier..."
+          pip install python-minifier
+
+          $libDir = "build\CPSK.extension\lib"
+          Write-Host "=== Minifying Python files in $libDir ==="
+
+          # Files to minify (lib modules)
+          Get-ChildItem "$libDir\*.py" | ForEach-Object {
+            if ($_.Name -ne "__init__.py") {
+              $originalSize = $_.Length
+              Write-Host "Minifying: $($_.Name) ($originalSize bytes)"
+
+              # Minify with conservative options (no global rename to avoid breaking imports)
+              $tempFile = "$($_.FullName).min"
+              python -m python_minifier $_.FullName --remove-literal-statements --remove-debug -o $tempFile
+
+              if (Test-Path $tempFile) {
+                Move-Item $tempFile $_.FullName -Force
+                $newSize = (Get-Item $_.FullName).Length
+                $reduction = [math]::Round((1 - $newSize / $originalSize) * 100)
+                Write-Host "  [OK] $originalSize -> $newSize bytes (-$reduction%)"
+              } else {
+                Write-Host "  [WARN] Minification failed, keeping original"
+              }
+            }
+          }
+
+          Write-Host "=== Minification complete ==="
+
       - name: Install Inno Setup
         shell: pwsh
         run: |
