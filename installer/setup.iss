@@ -16,8 +16,9 @@ Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=lowest
-DisableDirPage=yes
+DisableDirPage=no
 DisableReadyPage=no
+InfoBeforeFile=info.txt
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -35,7 +36,9 @@ Root: HKCU; Subkey: "Software\CPSK\Tools"; ValueType: string; ValueName: "Instal
 
 [Code]
 var
-  ProgressPage: TOutputProgressWizardPage;
+  StatusLabel: TNewStaticText;
+  ProgressBar: TNewProgressBar;
+  OutputPage: TWizardPage;
 
 function IsPyRevitInstalled: Boolean;
 var
@@ -50,54 +53,75 @@ begin
     Result := True;
 end;
 
-function RunPowerShellScript(ScriptPath, Arguments, StatusMsg: String): Boolean;
-var
-  ResultCode: Integer;
-  CmdLine: String;
+procedure UpdateStatus(Msg: String; Progress: Integer);
 begin
-  ProgressPage.SetText(StatusMsg, '');
-  ProgressPage.SetProgress(ProgressPage.ProgressBar.Position + 10, 100);
-  CmdLine := Format('-NoProfile -ExecutionPolicy Bypass -File "%s" %s', [ScriptPath, Arguments]);
-  Result := Exec('powershell.exe', CmdLine, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  StatusLabel.Caption := Msg;
+  ProgressBar.Position := Progress;
+  WizardForm.Refresh;
 end;
 
 procedure InitializeWizard;
 begin
-  ProgressPage := CreateOutputProgressPage('Installing', 'Please wait...');
+  OutputPage := CreateCustomPage(wpInstalling, 'Configuring CPSK Tools', 'Please wait while setup configures the extension...');
+  
+  StatusLabel := TNewStaticText.Create(OutputPage);
+  StatusLabel.Parent := OutputPage.Surface;
+  StatusLabel.Left := 0;
+  StatusLabel.Top := 20;
+  StatusLabel.Width := OutputPage.SurfaceWidth;
+  StatusLabel.Height := 40;
+  StatusLabel.AutoSize := False;
+  StatusLabel.WordWrap := True;
+  StatusLabel.Caption := 'Preparing...';
+  
+  ProgressBar := TNewProgressBar.Create(OutputPage);
+  ProgressBar.Parent := OutputPage.Surface;
+  ProgressBar.Left := 0;
+  ProgressBar.Top := 80;
+  ProgressBar.Width := OutputPage.SurfaceWidth;
+  ProgressBar.Height := 20;
+  ProgressBar.Min := 0;
+  ProgressBar.Max := 100;
+  ProgressBar.Position := 0;
 end;
 
-procedure CurStepChanged(CurStep: TSetupStep);
+procedure CurPageChanged(CurPageID: Integer);
 var
   PyRevitScript, RegisterScript, ExtensionPath: String;
+  ResultCode: Integer;
 begin
-  if CurStep = ssPostInstall then
+  if CurPageID = OutputPage.ID then
   begin
-    ProgressPage.Show;
-    ProgressPage.SetProgress(0, 100);
+    WizardForm.NextButton.Enabled := False;
+    WizardForm.BackButton.Enabled := False;
+    
     PyRevitScript := ExpandConstant('{app}\tools\Install-PyRevit.ps1');
     RegisterScript := ExpandConstant('{app}\tools\Register-Extension.ps1');
     ExtensionPath := ExpandConstant('{app}\CPSK.extension');
-    ProgressPage.SetText('Checking pyRevit...', '');
-    ProgressPage.SetProgress(10, 100);
+    
+    UpdateStatus('Checking if pyRevit is installed...', 10);
+    Sleep(500);
+    
     if not IsPyRevitInstalled then
     begin
-      ProgressPage.SetText('Installing pyRevit...', 'This may take a few minutes');
-      ProgressPage.SetProgress(20, 100);
-      RunPowerShellScript(PyRevitScript, Format('-RequiredVersion "{#PyRevitVersion}" -DownloadUrl "{#PyRevitUrl}"', []), 'Installing pyRevit...');
-      ProgressPage.SetProgress(70, 100);
+      UpdateStatus('pyRevit not found. Downloading and installing...' + #13#10 + 'This may take several minutes.', 20);
+      Exec('powershell.exe', Format('-NoProfile -ExecutionPolicy Bypass -File "%s" -RequiredVersion "{#PyRevitVersion}" -DownloadUrl "{#PyRevitUrl}"', [PyRevitScript]), '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      UpdateStatus('pyRevit installation complete.', 60);
     end
     else
     begin
-      ProgressPage.SetText('pyRevit is already installed', '');
-      ProgressPage.SetProgress(50, 100);
+      UpdateStatus('pyRevit is already installed. Skipping...', 50);
     end;
-    ProgressPage.SetText('Registering extension...', '');
-    ProgressPage.SetProgress(80, 100);
-    RunPowerShellScript(RegisterScript, Format('-ExtensionPath "%s"', [ExtensionPath]), 'Registering extension...');
-    ProgressPage.SetProgress(100, 100);
-    ProgressPage.SetText('Installation complete!', '');
+    
     Sleep(500);
-    ProgressPage.Hide;
+    UpdateStatus('Registering CPSK extension in pyRevit...', 70);
+    Exec('powershell.exe', Format('-NoProfile -ExecutionPolicy Bypass -File "%s" -ExtensionPath "%s"', [RegisterScript, ExtensionPath]), '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    
+    UpdateStatus('Configuration complete!', 100);
+    Sleep(1000);
+    
+    WizardForm.NextButton.Enabled := True;
+    WizardForm.NextButton.OnClick(WizardForm.NextButton);
   end;
 end;
 

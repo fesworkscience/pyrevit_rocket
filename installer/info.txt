@@ -1,0 +1,19 @@
+CPSK Tools for Revit
+====================
+
+This extension provides automation tools for Autodesk Revit.
+
+REQUIREMENTS:
+- pyRevit (will be installed automatically if not present)
+- Autodesk Revit 2021-2025
+- Windows 10/11
+
+WHAT WILL BE INSTALLED:
+- CPSK Tools extension for pyRevit
+- pyRevit platform (if not already installed)
+
+The extension will be registered in pyRevit automatically.
+After installation, restart Revit to see the CPSK tab.
+
+Website: https://rocket-tools.ru
+pyRevit: https://pyrevitlabs.io
