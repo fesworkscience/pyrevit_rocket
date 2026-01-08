@@ -1,4 +1,4 @@
-name: Build MSI Installer
+name: Build Installer
 
 on:
   push:
@@ -64,27 +64,44 @@ jobs:
             if (Test-Path $pycPath) { Remove-Item $_.FullName -Force }
           }
 
-      - name: Install WiX Toolset
+      - name: Create default icon
         shell: pwsh
         run: |
-          dotnet tool install --global wix --version 4.0.5
+          if (-not (Test-Path "installer\icon.ico")) {
+            # Download a default icon or create placeholder
+            $iconUrl = "https://raw.githubusercontent.com/pyrevitlabs/pyRevit/master/extensions/pyRevitCore.extension/icon.ico"
+            Invoke-WebRequest -Uri $iconUrl -OutFile "installer\icon.ico" -ErrorAction SilentlyContinue
+            if (-not (Test-Path "installer\icon.ico")) {
+              # Create minimal valid ICO file
+              [byte[]]$ico = @(0,0,1,0,1,0,1,1,0,0,1,0,24,0,48,0,0,0,22,0,0,0,40,0,0,0,1,0,0,0,2,0,0,0,1,0,24,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,255,0,0,0)
+              [System.IO.File]::WriteAllBytes("installer\icon.ico", $ico)
+            }
+          }
 
-      - name: Generate files.wxs
+      - name: Install Inno Setup
         shell: pwsh
         run: |
-          & "installer\scripts\Generate-FilesWxs.ps1" -Source "build\CPSK.extension" -Output "installer\files.wxs"
+          choco install innosetup -y
 
-      - name: Build MSI
+      - name: Build Installer
         shell: pwsh
         run: |
           $version = "${{ steps.version.outputs.VERSION }}"
-          wix build -d Version=$version -d ExtensionSource="build\CPSK.extension" -d PyRevitVersion="${{ env.PYREVIT_VERSION }}" -d PyRevitUrl="${{ env.PYREVIT_URL }}" -out "CPSK_Tools_v$version.msi" "installer\Product.wxs" "installer\files.wxs"
+          $pyrevitVersion = "${{ env.PYREVIT_VERSION }}"
+          $pyrevitUrl = "${{ env.PYREVIT_URL }}"
 
-      - name: Upload MSI artifact
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
+            /DMyAppVersion="$version" `
+            /DPyRevitVersion="$pyrevitVersion" `
+            /DPyRevitUrl="$pyrevitUrl" `
+            /O"." `
+            "installer\setup.iss"
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CPSK-Tools-MSI
-          path: "*.msi"
+          name: CPSK-Tools-Installer
+          path: "CPSK_Tools_*.exe"
           retention-days: 30
 
       - name: Create Release
@@ -96,16 +113,19 @@ jobs:
             ## CPSK Tools for Revit v${{ steps.version.outputs.VERSION }}
 
             ### Установка
-            1. Скачайте `CPSK_Tools_v${{ steps.version.outputs.VERSION }}.msi`
+            1. Скачайте `CPSK_Tools_v${{ steps.version.outputs.VERSION }}.exe`
             2. Запустите установщик
             3. Перезапустите Revit
 
             ### Требования
             - Windows 10/11
             - Autodesk Revit 2021-2025
-          files: "*.msi"
+
+            ### Что нового
+            - Современный установщик с прогресс-баром
+            - Автоматическая установка pyRevit при необходимости
+          files: "CPSK_Tools_*.exe"
           draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
