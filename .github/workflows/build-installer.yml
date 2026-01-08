@@ -54,7 +54,8 @@ jobs:
       - name: Compile Python to .pyc
         shell: pwsh
         run: |
-          python -m compileall -b "build\CPSK.extension"
+          $env:PYTHONIOENCODING = "utf-8"
+          python -m compileall -b -q "build\CPSK.extension"
           Get-ChildItem -Path "build\CPSK.extension" -Recurse -Filter "*.py" | ForEach-Object {
             $pycPath = $_.FullName -replace '\.py$', '.pyc'
             if (Test-Path $pycPath) { Remove-Item $_.FullName -Force }
