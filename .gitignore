@@ -27,6 +27,9 @@ setup_env.log
 
 .env
 
+# Sensitive scripts with credentials
+get_token.ps1
+upload_release.ps1
 
 rocket-revit-master
 
