@@ -12,6 +12,7 @@ pyRevit Universal Code Checker
     - walrus operator := (не поддерживается)
     - type hints (предупреждение)
     - subprocess timeout (не поддерживается)
+    - subprocess без env для Python/pip (конфликт IronPython/CPython)
     - open() с encoding (использовать codecs)
     - open() без codecs для текстовых файлов (кракозябры!)
     - Application.Run() (использовать ShowDialog())
@@ -23,7 +24,10 @@ pyRevit Universal Code Checker
     - неправильная работа с cpsk_settings.yaml (использовать cpsk_config)
     - отсутствие проверки авторизации require_auth() в скриптах кнопок
     - использование MessageBox.Show или forms.alert (использовать cpsk_notify)
-    - использование output.print_md для ошибок (использовать cpsk_notify)
+    - использование output.print_md для пользовательских сообщений:
+      * ошибки -> cpsk_notify.show_error()
+      * предупреждения -> cpsk_notify.show_warning()
+      * успех/готово -> cpsk_notify.show_success()
     - отсутствие icon.png в папках .pushbutton и .pulldown
 """
 
@@ -89,6 +93,7 @@ class PyRevitChecker:
         self.check_walrus_operator(lines)
         self.check_type_hints(lines)
         self.check_subprocess_timeout(lines)
+        self.check_subprocess_env(lines, content)
         self.check_open_encoding(lines)
         self.check_open_without_codecs(lines)
         self.check_application_run(lines)
@@ -144,6 +149,90 @@ class PyRevitChecker:
                 self.errors.append(
                     "Строка {}: subprocess.TimeoutExpired не существует.".format(i)
                 )
+
+    def check_subprocess_env(self, lines, content):
+        """Проверить subprocess без env= при запуске Python/pip.
+
+        IronPython устанавливает PYTHONHOME, PYTHONPATH, IRONPYTHONPATH,
+        которые конфликтуют с CPython и вызывают "Failed to import encodings".
+        Решение: очистить эти переменные перед subprocess.Popen().
+        """
+        # Пропускаем сам модуль cpsk_config.py (там определена get_clean_env)
+        filename = os.path.basename(self.current_file) if self.current_file else ""
+        if filename == 'cpsk_config.py':
+            return
+
+        # Проверяем есть ли импорт get_clean_env
+        has_clean_env_import = bool(re.search(r'from\s+cpsk_config\s+import.*get_clean_env', content))
+
+        # Ключевые слова, указывающие на запуск Python/pip
+        python_keywords = ['python', 'pip', 'venv', 'virtualenv', 'activate']
+
+        for i, line in enumerate(lines, 1):
+            code_part = line.split('#')[0]
+
+            # Ищем subprocess.Popen или subprocess.check_output/call/run
+            subprocess_match = re.search(
+                r'subprocess\.(Popen|check_output|check_call|call|run)\s*\(',
+                code_part
+            )
+            if not subprocess_match:
+                continue
+
+            # Проверяем, содержит ли строка или ближайшие строки Python-связанные команды
+            # Смотрим контекст: текущую строку и 5 предыдущих
+            context_start = max(0, i - 6)
+            context_lines = lines[context_start:i]
+            context = ' '.join(context_lines) + ' ' + code_part
+
+            is_python_call = False
+            for keyword in python_keywords:
+                if keyword in context.lower():
+                    is_python_call = True
+                    break
+
+            if not is_python_call:
+                continue
+
+            # Проверяем наличие env= в вызове subprocess
+            # Смотрим текущую строку и несколько следующих (многострочный вызов)
+            call_context_end = min(len(lines), i + 10)
+            call_lines = lines[i-1:call_context_end]
+            call_text = ' '.join(call_lines)
+
+            # Ищем закрывающую скобку Popen(...)
+            paren_count = 0
+            call_end = 0
+            started = False
+            for j, char in enumerate(call_text):
+                if char == '(':
+                    started = True
+                    paren_count += 1
+                elif char == ')':
+                    paren_count -= 1
+                    if started and paren_count == 0:
+                        call_end = j
+                        break
+
+            if call_end > 0:
+                call_args = call_text[:call_end + 1]
+            else:
+                call_args = call_text
+
+            # Проверяем есть ли env= в аргументах
+            if 'env=' not in call_args and 'env =' not in call_args:
+                self.warnings.append(
+                    "Строка {}: subprocess.{} без env= для Python/pip. "
+                    "IronPython переменные (PYTHONHOME) сломают CPython! "
+                    "Используйте env=get_clean_env() из cpsk_config.".format(
+                        i, subprocess_match.group(1)
+                    )
+                )
+
+                if not has_clean_env_import:
+                    self.warnings.append(
+                        "Строка {}: Добавьте импорт: from cpsk_config import get_clean_env".format(i)
+                    )
 
     def check_open_encoding(self, lines):
         """Проверить open() с encoding (использовать codecs)."""
@@ -415,15 +504,35 @@ class PyRevitChecker:
                     "Строка {}: forms.alert запрещён. Используйте cpsk_notify.show_error/warning/info/success".format(i)
                 )
 
-            # output.print_md для сообщений об ошибках - должен использоваться cpsk_notify
-            # Ловим только явные ошибки: "Ошибка", "Error", "**Error**", "failed", "не удалось"
+            # output.print_md для пользовательских сообщений - должен использоваться cpsk_notify
+            # Ловим: ошибки, предупреждения, информационные сообщения, успех
             if 'output.print_md' in code_part:
-                error_keywords = ['ошибк', 'error', 'failed', 'не удалось', 'невозможно', 'exception']
                 line_lower = code_part.lower()
+
+                # Ошибки
+                error_keywords = ['ошибк', 'error', 'failed', 'не удалось', 'невозможно', 'exception']
                 for keyword in error_keywords:
                     if keyword in line_lower:
                         self.warnings.append(
                             "Строка {}: output.print_md для ошибок запрещён. Используйте cpsk_notify.show_error()".format(i)
+                        )
+                        break
+
+                # Предупреждения
+                warning_keywords = ['внимани', 'warning', 'предупрежд', 'осторожн']
+                for keyword in warning_keywords:
+                    if keyword in line_lower:
+                        self.warnings.append(
+                            "Строка {}: output.print_md для предупреждений запрещён. Используйте cpsk_notify.show_warning()".format(i)
+                        )
+                        break
+
+                # Успех / Готово
+                success_keywords = ['готово', 'успешн', 'завершен', 'выполнен', 'success', 'done', 'complete']
+                for keyword in success_keywords:
+                    if keyword in line_lower:
+                        self.warnings.append(
+                            "Строка {}: output.print_md для успеха запрещён. Используйте cpsk_notify.show_success()".format(i)
                         )
                         break
 

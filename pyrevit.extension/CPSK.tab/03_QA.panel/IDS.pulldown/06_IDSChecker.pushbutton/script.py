@@ -41,7 +41,7 @@ if LIB_DIR not in sys.path:
 # Импорт модулей из lib
 from cpsk_notify import show_error, show_warning, show_info, show_success
 from cpsk_auth import require_auth
-from cpsk_config import require_environment, get_venv_python
+from cpsk_config import require_environment, get_venv_python, get_clean_env
 
 # Проверка авторизации
 if not require_auth():
@@ -650,11 +650,15 @@ def run_ids_check(python_path, ids_path, ifc_path, report_path, _os=None, _tempf
         startupinfo.dwFlags |= _subprocess.STARTF_USESHOWWINDOW
         startupinfo.wShowWindow = 0
 
+        # Очищаем переменные окружения IronPython для корректной работы CPython
+        clean_env = get_clean_env()
+
         process = _subprocess.Popen(
             cmd,
             stdout=_subprocess.PIPE,
             stderr=_subprocess.PIPE,
-            startupinfo=startupinfo
+            startupinfo=startupinfo,
+            env=clean_env
         )
 
         stdout, stderr = process.communicate()

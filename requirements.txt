@@ -17,3 +17,6 @@ PyYAML>=6.0
 
 # Утилиты
 python-dateutil>=2.8.0
+
+# AI/Generative
+google-genai>=1.0.0

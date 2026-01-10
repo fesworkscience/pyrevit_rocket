@@ -100,12 +100,12 @@ predType_node = spec_node.SelectSingleNode("ids:applicability/ids:entity/ids:pre
 ### Команда запуска (ВАЖНО - использовать абсолютные пути!)
 
 ```bash
-"C:\ProgramData\miniconda3\python.exe" "C:\Users\feduloves\Documents\web\rhino_cpsk\pyrevit.extension\lib\pyrevit_checker.py" "C:\Users\feduloves\Documents\web\rhino_cpsk\pyrevit.extension\CPSK.tab\QA.panel\IDStoFOP.pushbutton\script.py"
+"C:\ProgramData\miniconda3\python.exe" "C:\Users\feduloves\Documents\web\pyrevit_rocket\pyrevit.extension\lib\pyrevit_checker.py" "C:\Users\feduloves\Documents\web\pyrevit_rocket\pyrevit.extension\CPSK.tab\QA.panel\IDStoFOP.pushbutton\script.py"
 ```
 
 Или для всей папки:
 ```bash
-"C:\ProgramData\miniconda3\python.exe" "C:\Users\feduloves\Documents\web\rhino_cpsk\pyrevit.extension\lib\pyrevit_checker.py" "C:\Users\feduloves\Documents\web\rhino_cpsk\pyrevit.extension\CPSK.tab"
+"C:\ProgramData\miniconda3\python.exe" "C:\Users\feduloves\Documents\web\pyrevit_rocket\pyrevit.extension\lib\pyrevit_checker.py" "C:\Users\feduloves\Documents\web\pyrevit_rocket\pyrevit.extension\CPSK.tab"
 ```
 
 ### ВАЖНО: Проблема с os.path.exists() на Windows
@@ -126,6 +126,8 @@ predType_node = spec_node.SelectSingleNode("ids:applicability/ids:entity/ids:pre
 - отсутствие `require_auth()` в скриптах кнопок
 - неправильная работа с `cpsk_settings.yaml` (использовать `cpsk_config`)
 - использование `MessageBox.Show` или `forms.alert` (использовать `cpsk_notify`)
+- использование `output.print_md` для пользовательских сообщений (использовать `cpsk_notify`)
+- `subprocess.Popen/check_output` для Python/pip без `env=` (использовать `get_clean_env()`)
 
 ## Проверка авторизации (КРИТИЧНО!)
 
@@ -167,7 +169,13 @@ if not require_auth():
 ## Уведомления cpsk_notify (ОБЯЗАТЕЛЬНО!)
 
 Все уведомления в проекте должны использовать единый модуль `cpsk_notify`.
-**НЕ используй** `MessageBox.Show` или `forms.alert` - они запрещены!
+
+**ЗАПРЕЩЕНО использовать:**
+- `MessageBox.Show` - системные диалоги
+- `forms.alert` - pyRevit алерты
+- `output.print_md` для пользовательских сообщений (только для отладки!)
+
+**ПРАВИЛЬНО:** Все сообщения пользователю через `cpsk_notify`!
 
 ### Импорт:
 ```python
@@ -225,11 +233,19 @@ show_toast("CPSK", "Готово к работе", notification_type="success", 
 # НЕПРАВИЛЬНО - запрещено!
 MessageBox.Show("Сообщение", "Заголовок", MessageBoxButtons.OK, MessageBoxIcon.Error)
 forms.alert("Сообщение", title="Заголовок")
+output.print_md("## Ошибка: что-то пошло не так")  # Только для отладки!
 
 # ПРАВИЛЬНО - используй cpsk_notify!
 show_error("Заголовок", "Сообщение")
 show_info("Заголовок", "Сообщение")
+show_warning("Внимание", "Предупреждение")
+show_success("Готово", "Операция завершена")
 ```
+
+### Когда использовать output.print_md:
+- Только для отладочного вывода (DEBUG режим)
+- Для вывода длинных списков/таблиц данных
+- Никогда для ошибок, предупреждений и пользовательских сообщений!
 
 ## ВАЖНО: Ошибка при Reload pyRevit
 
@@ -599,6 +615,43 @@ with codecs.open(path, 'r', 'utf-8') as f:  # OK
     content = f.read()
 # НЕ: open(path, 'r', encoding='utf-8')  # ERROR
 ```
+
+### Subprocess и CPython (КРИТИЧНО!)
+
+При запуске внешних Python-скриптов через `subprocess` из IronPython возникает ошибка:
+```
+Failed to import encodings module
+```
+
+**Причина:** IronPython устанавливает переменные окружения (`PYTHONHOME`, `PYTHONPATH`, `IRONPYTHONPATH`), которые конфликтуют с CPython.
+
+**Решение:** Очищать окружение перед запуском subprocess:
+
+```python
+from cpsk_config import get_clean_env
+
+# ПРАВИЛЬНО - с очищенным окружением
+process = subprocess.Popen(
+    ['python', '-m', 'pip', 'install', 'package'],
+    env=get_clean_env()  # Убирает PYTHONHOME, PYTHONPATH, IRONPYTHONPATH
+)
+
+# НЕПРАВИЛЬНО - вызовет "Failed to import encodings"!
+process = subprocess.Popen(['python', '-m', 'pip', 'install', 'package'])
+```
+
+**Функция `get_clean_env()` из `cpsk_config.py`:**
+```python
+def get_clean_env():
+    """Получить очищенное окружение для subprocess."""
+    env = os.environ.copy()
+    env.pop('PYTHONHOME', None)
+    env.pop('PYTHONPATH', None)
+    env.pop('IRONPYTHONPATH', None)
+    return env
+```
+
+**Применять для:** любых вызовов `python`, `pip`, `venv`, `virtualenv` через subprocess.
 
 ## Работа с кодировкой UTF-8 (КРИТИЧНО!)
 

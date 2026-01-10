@@ -415,6 +415,13 @@ class SetupEnvForm(Form):
         log_lines.append("-" * 50)
 
         try:
+            # Очищаем переменные окружения IronPython, которые мешают CPython
+            # Без этого CPython не находит модуль encodings
+            env = os.environ.copy()
+            env.pop('PYTHONHOME', None)
+            env.pop('PYTHONPATH', None)
+            env.pop('IRONPYTHONPATH', None)
+
             # CREATE_NO_WINDOW = 0x08000000 - скрывает окно CMD
             CREATE_NO_WINDOW = 0x08000000
             process = subprocess.Popen(
@@ -422,7 +429,8 @@ class SetupEnvForm(Form):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 shell=False,
-                creationflags=CREATE_NO_WINDOW
+                creationflags=CREATE_NO_WINDOW,
+                env=env
             )
             stdout, stderr = process.communicate()
 

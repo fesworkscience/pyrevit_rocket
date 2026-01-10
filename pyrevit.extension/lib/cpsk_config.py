@@ -301,15 +301,27 @@ def find_system_python():
     return None
 
 
+def get_clean_env():
+    """Получить очищенное окружение для subprocess (без переменных IronPython)."""
+    env = os.environ.copy()
+    env.pop('PYTHONHOME', None)
+    env.pop('PYTHONPATH', None)
+    env.pop('IRONPYTHONPATH', None)
+    return env
+
+
 def get_python_version(python_path):
     """Получить версию Python."""
     if not python_path or not os.path.exists(python_path):
         return None
     try:
         import subprocess
+        CREATE_NO_WINDOW = 0x08000000
         result = subprocess.check_output(
             [python_path, "--version"],
-            stderr=subprocess.STDOUT
+            stderr=subprocess.STDOUT,
+            env=get_clean_env(),
+            creationflags=CREATE_NO_WINDOW
         )
         return result.decode('utf-8', errors='ignore').strip()
     except Exception:
@@ -377,7 +389,8 @@ def get_installed_packages():
         CREATE_NO_WINDOW = 0x08000000
         output = subprocess.check_output(
             [pip, "list", "--format=freeze"],
-            creationflags=CREATE_NO_WINDOW
+            creationflags=CREATE_NO_WINDOW,
+            env=get_clean_env()
         )
         lines = output.decode('utf-8', errors='ignore').strip().split('\n')
 
