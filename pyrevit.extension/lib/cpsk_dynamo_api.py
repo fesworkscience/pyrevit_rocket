@@ -19,15 +19,18 @@ API клиент для загрузки Dynamo скриптов с сервер
 """
 
 import os
+import sys
 import re
 import urllib2
 import ssl
 
 from cpsk_auth import AuthService, _create_ssl_context
 
-
-# API настройки
-API_BASE_URL = "https://api-cpsk-superapp.gip.su/api/rocketrevit"
+# Импортируем config из корня проекта
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+from config import API_BASE_URL, API_ROCKETREVIT_URL
 
 
 def _url_decode(s):
@@ -170,9 +173,9 @@ class DynamoApiClient(object):
         Инициализация клиента.
 
         Args:
-            base_url: Базовый URL API (по умолчанию API_BASE_URL)
+            base_url: Базовый URL API (по умолчанию API_ROCKETREVIT_URL)
         """
-        self.base_url = base_url or API_BASE_URL
+        self.base_url = base_url or API_ROCKETREVIT_URL
 
     def _make_request(self, method, endpoint, require_auth=True):
         """
@@ -267,7 +270,7 @@ class DynamoApiClient(object):
 
             # Формируем download_link если его нет
             if not script.get("download_link") and file_input:
-                script["download_link"] = "https://api-cpsk-superapp.gip.su{}".format(file_input)
+                script["download_link"] = "{}{}".format(API_BASE_URL, file_input)
 
         return (True, scripts, None)
 
@@ -308,7 +311,7 @@ class DynamoApiClient(object):
         if not download_url:
             file_input = script_info.get("file_input")
             if file_input:
-                download_url = "https://api-cpsk-superapp.gip.su{}".format(file_input)
+                download_url = "{}{}".format(API_BASE_URL, file_input)
             else:
                 return (False, None, "Нет ссылки для скачивания")
 

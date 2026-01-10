@@ -22,15 +22,21 @@ API клиент для работы с проектами на сервере.
 """
 
 import os
+import sys
 import re
 import urllib2
 import ssl
 
 from cpsk_auth import AuthService, _create_ssl_context, _escape_json
 
+# Импортируем config из корня проекта
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+from config import API_ROCKETREVIT_URL
 
-# API настройки
-API_BASE_URL = "https://api-cpsk-superapp.gip.su/api/rocketrevit"
+# API настройки (используем API_ROCKETREVIT_URL)
+API_BASE_URL = API_ROCKETREVIT_URL
 
 
 def _parse_json_value(json_str, key):

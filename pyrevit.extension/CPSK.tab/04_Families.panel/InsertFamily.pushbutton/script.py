@@ -40,6 +40,11 @@ LIB_DIR = os.path.join(EXTENSION_DIR, "lib")
 if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
 
+# Добавляем корень проекта для импорта config
+PROJECT_ROOT = os.path.dirname(EXTENSION_DIR)
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
 # Проверка авторизации
 from cpsk_auth import require_auth, AuthService, _create_ssl_context
 from cpsk_notify import show_error, show_warning, show_success, show_info
@@ -49,8 +54,8 @@ if not require_auth():
 
 doc = revit.doc
 
-# API настройки
-API_BASE_URL = "https://api-cpsk-superapp.gip.su"
+# API настройки (импорт из config.py)
+from config import API_BASE_URL
 API_SECTIONS_ENDPOINT = "/api/rocketrevit/sections/"
 API_FAMILIES_ENDPOINT = "/api/rocketrevit/revit-families/shared_files/"
 

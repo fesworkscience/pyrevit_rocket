@@ -21,6 +21,7 @@ CPSK Authentication Module
 """
 
 import os
+import sys
 import re
 import urllib2
 import ssl
@@ -28,8 +29,13 @@ import ssl
 # Импортируем cpsk_config для работы с настройками
 from cpsk_config import get_setting, set_setting
 
+# Импортируем config из корня проекта
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+from config import API_BASE_URL
+
 # API настройки
-API_BASE_URL = "https://api-cpsk-superapp.gip.su"
 API_TOKEN_ENDPOINT = "/api/rocketrevit/token/"
 
 # Кэш токена в памяти
@@ -302,6 +308,20 @@ def require_auth(silent=False):
     Returns:
         bool: True если авторизован, False если нет
     """
+    # Check DEBUG mode - skip auth if DEBUG is True
+    try:
+        import sys
+        import os
+        # Add project root to path to import config
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        if project_root not in sys.path:
+            sys.path.insert(0, project_root)
+        from config import DEBUG
+        if DEBUG:
+            return True
+    except Exception:
+        pass  # If config import fails, continue with normal auth check
+
     if AuthService.is_authenticated():
         return True
 

@@ -13,8 +13,14 @@ def decode_ifc_hex(hex_part):
             result.append(chr(code))
     return ''.join(result)
 
-# Read IFC file
-ifc_path = r'C:\Users\feduloves\Documents\web\rhino_cpsk\pyrevit.extension\CPSK.tab\QA.panel\IDS.pulldown\06_IDSChecker.pushbutton\2.ifc'
+# Read IFC file (pass path as argument or use default in script directory)
+import sys
+if len(sys.argv) > 1:
+    ifc_path = sys.argv[1]
+else:
+    # Default: look for .ifc file in script directory
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    ifc_path = os.path.join(script_dir, '2.ifc')
 try:
     with codecs.open(ifc_path, 'r', 'utf-8') as f:
         content = f.read()

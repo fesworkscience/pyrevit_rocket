@@ -555,7 +555,7 @@ def export_to_ifc_with_config(doc, output_path, config_name=None, _os=None, _LIB
             log_lines.append("Using fallback IFC4RV")
 
         # Сохраняем лог в папку скрипта
-        log_path = r"C:\Users\feduloves\Documents\web\rhino_cpsk\pyrevit.extension\CPSK.tab\QA.panel\IDS.pulldown\06_IDSChecker.pushbutton\ifc_export_log.txt"
+        log_path = os.path.join(SCRIPT_DIR, "ifc_export_log.txt")
         import codecs as _codecs
         with _codecs.open(log_path, 'w', 'utf-8') as f:
             f.write("\n".join(log_lines))
