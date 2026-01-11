@@ -20,7 +20,8 @@ pyRevit Universal Code Checker
     - yield from (не поддерживается)
     - nonlocal (не поддерживается)
     - расширенная распаковка *rest (не поддерживается)
-    - except без show_error (предупреждение)
+    - except без show_error (ОШИБКА! Все исключения должны уведомлять пользователя)
+    - PickObject внутри модальной формы (вызывает "Cannot re-enter the pick operation")
     - неправильная работа с cpsk_settings.yaml (использовать cpsk_config)
     - отсутствие проверки авторизации require_auth() в скриптах кнопок
     - использование MessageBox.Show или forms.alert (использовать cpsk_notify)
@@ -29,6 +30,7 @@ pyRevit Universal Code Checker
       * предупреждения -> cpsk_notify.show_warning()
       * успех/готово -> cpsk_notify.show_success()
     - отсутствие icon.png в папках .pushbutton и .pulldown
+    - устаревшие импорты Revit API (BuiltInParameterGroup, ParameterType deprecated в 2022+)
 """
 
 import sys
@@ -105,6 +107,8 @@ class PyRevitChecker:
         self.check_config_usage(lines, content)
         self.check_require_auth(lines, content)
         self.check_notification_usage(lines, content)
+        self.check_pickobject_in_modal(lines, content)
+        self.check_deprecated_revit_api(lines, content)
         self.check_icon_exists()
 
         return len(self.errors) == 0
@@ -316,7 +320,7 @@ class PyRevitChecker:
                 )
 
     def check_except_without_notify(self, lines, content):
-        """Проверить except блоки без show_error (предупреждение)."""
+        """Проверить except блоки без show_error (ОШИБКА!)."""
         # Проверяем импортирован ли show_error
         has_show_error_import = bool(re.search(r'from\s+cpsk_notify\s+import.*show_error', content))
 
@@ -337,16 +341,21 @@ class PyRevitChecker:
 
             # Начало except блока
             if re.match(r'except\s*.*:', stripped):
-                # Если был предыдущий except без notify - добавляем предупреждение
+                # Если был предыдущий except без notify - добавляем ОШИБКУ
                 if in_except and not has_notify_in_block:
-                    self.warnings.append(
-                        "Строка {}: except без show_error(). Добавьте уведомление пользователю.".format(except_line)
+                    self.errors.append(
+                        "Строка {}: except без уведомления! Добавьте show_error/show_warning.".format(except_line)
                     )
 
                 in_except = True
                 except_line = i
                 except_indent = current_indent
                 has_notify_in_block = False
+
+                # OperationCanceledException - штатный выход (ESC), не требует уведомления
+                if 'OperationCanceledException' in stripped:
+                    has_notify_in_block = True
+
                 continue
 
             # Внутри except блока
@@ -355,8 +364,8 @@ class PyRevitChecker:
                 if stripped and current_indent <= except_indent and not stripped.startswith('#'):
                     # Конец except блока
                     if not has_notify_in_block:
-                        self.warnings.append(
-                            "Строка {}: except без show_error(). Добавьте уведомление пользователю.".format(except_line)
+                        self.errors.append(
+                            "Строка {}: except без уведомления! Добавьте show_error/show_warning.".format(except_line)
                         )
                     in_except = False
 
@@ -370,14 +379,15 @@ class PyRevitChecker:
                 # Проверяем наличие cpsk_notify внутри блока (ТОЛЬКО cpsk_notify!)
                 if 'show_error' in line or 'show_warning' in line or 'show_info' in line or 'show_success' in line:
                     has_notify_in_block = True
-                # pass, return, raise - допустимые варианты без notify
-                if re.match(r'\s*(pass|return|raise)\b', line):
+                # return, raise - допустимые варианты (возвращают/перебрасывают ошибку)
+                # pass и continue - НЕ допустимы (молчаливый пропуск)
+                if re.match(r'\s*(return|raise)\b', line):
                     has_notify_in_block = True
 
         # Проверяем последний except если файл закончился
         if in_except and not has_notify_in_block:
-            self.warnings.append(
-                "Строка {}: except без show_error(). Добавьте уведомление пользователю.".format(except_line)
+            self.errors.append(
+                "Строка {}: except без уведомления! Добавьте show_error/show_warning.".format(except_line)
             )
 
     def check_config_usage(self, lines, content):
@@ -535,6 +545,110 @@ class PyRevitChecker:
                             "Строка {}: output.print_md для успеха запрещён. Используйте cpsk_notify.show_success()".format(i)
                         )
                         break
+
+    def check_pickobject_in_modal(self, lines, content):
+        """Проверить что PickObject не вызывается из модального диалога.
+
+        PickObject нельзя вызывать из модального окна (ShowDialog) -
+        это вызывает ошибку "Cannot re-enter the pick operation".
+
+        Правильные решения:
+        1. Закрывать форму перед выбором (DialogResult.Retry паттерн)
+        2. Использовать немодальное окно (Show() вместо ShowDialog())
+        """
+        if not self.current_file:
+            return
+
+        # Проверяем есть ли PickObject в файле
+        has_pickobject = bool(re.search(r'\.PickObject\s*\(', content))
+        if not has_pickobject:
+            return
+
+        # Проверяем есть ли ShowDialog
+        has_showdialog = bool(re.search(r'\.ShowDialog\s*\(', content))
+        if not has_showdialog:
+            return  # Нет модального окна - OK
+
+        # Ищем PickObject внутри методов класса Form (on_xxx методы)
+        # Это ошибка - нельзя вызывать PickObject из обработчика события модальной формы
+        in_form_class = False
+        in_form_method = False
+        form_class_indent = 0
+        method_indent = 0
+
+        for i, line in enumerate(lines, 1):
+            stripped = line.lstrip()
+            current_indent = len(line) - len(stripped)
+
+            # Начало класса Form
+            if re.match(r'class\s+\w+.*\(.*Form.*\):', stripped):
+                in_form_class = True
+                form_class_indent = current_indent
+                continue
+
+            # Выход из класса Form
+            if in_form_class and stripped and current_indent <= form_class_indent and not stripped.startswith('#'):
+                if not re.match(r'class\s+', stripped):  # Это не новый класс
+                    in_form_class = False
+                    in_form_method = False
+
+            # Начало метода внутри класса Form
+            if in_form_class and re.match(r'def\s+(on_|_on_)', stripped):
+                in_form_method = True
+                method_indent = current_indent
+                continue
+
+            # Выход из метода
+            if in_form_method and stripped and current_indent <= method_indent and not stripped.startswith('#'):
+                if re.match(r'def\s+', stripped):
+                    # Новый метод
+                    if re.match(r'def\s+(on_|_on_)', stripped):
+                        in_form_method = True
+                        method_indent = current_indent
+                    else:
+                        in_form_method = False
+                elif current_indent < method_indent:
+                    in_form_method = False
+
+            # Проверяем PickObject внутри метода формы
+            if in_form_method and '.PickObject' in line:
+                self.errors.append(
+                    "Строка {}: PickObject внутри обработчика модальной формы! "
+                    "Закройте форму перед выбором (DialogResult.Retry) или используйте Show() вместо ShowDialog().".format(i)
+                )
+
+    def check_deprecated_revit_api(self, lines, content):
+        """Проверить использование устаревших классов Revit API.
+
+        В Revit 2022+ многие классы были заменены на ForgeTypeId:
+        - BuiltInParameterGroup -> GroupTypeId
+        - ParameterType -> SpecTypeId
+        - UnitType -> SpecTypeId
+        - DisplayUnitType -> UnitTypeId
+        """
+        # Устаревшие импорты и их замены
+        deprecated_imports = {
+            'BuiltInParameterGroup': 'Deprecated в Revit 2022+. Используйте GroupTypeId или удалите.',
+            'ParameterType': 'Deprecated в Revit 2022+. Используйте ForgeTypeId/SpecTypeId.',
+            'UnitType': 'Deprecated в Revit 2022+. Используйте ForgeTypeId/SpecTypeId.',
+            'DisplayUnitType': 'Deprecated в Revit 2022+. Используйте ForgeTypeId/UnitTypeId.',
+        }
+
+        for i, line in enumerate(lines, 1):
+            code_part = line.split('#')[0]
+
+            # Проверяем импорты из Autodesk.Revit.DB
+            for deprecated, message in deprecated_imports.items():
+                # Ищем в импортах
+                if re.search(r'import\s+.*\b{}\b'.format(deprecated), code_part):
+                    self.errors.append(
+                        "Строка {}: {} - {}".format(i, deprecated, message)
+                    )
+                # Ищем в from ... import
+                if re.search(r'from\s+Autodesk\.Revit\.DB\s+import.*\b{}\b'.format(deprecated), code_part):
+                    self.errors.append(
+                        "Строка {}: {} - {}".format(i, deprecated, message)
+                    )
 
     def check_icon_exists(self):
         """Проверить наличие icon.png в папках .pushbutton и .pulldown."""

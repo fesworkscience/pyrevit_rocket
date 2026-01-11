@@ -128,6 +128,94 @@ predType_node = spec_node.SelectSingleNode("ids:applicability/ids:entity/ids:pre
 - использование `MessageBox.Show` или `forms.alert` (использовать `cpsk_notify`)
 - использование `output.print_md` для пользовательских сообщений (использовать `cpsk_notify`)
 - `subprocess.Popen/check_output` для Python/pip без `env=` (использовать `get_clean_env()`)
+- **except без уведомления (ОШИБКА!)** - все исключения должны показывать `show_error/show_warning`
+- **PickObject внутри модальной формы (ОШИБКА!)** - вызывает "Cannot re-enter the pick operation"
+
+### КРИТИЧНО: Обработка исключений
+
+**Все блоки except ОБЯЗАНЫ уведомлять пользователя!** Молчаливый пропуск ошибок запрещён.
+
+```python
+# НЕПРАВИЛЬНО - молчаливый пропуск!
+try:
+    do_something()
+except:
+    pass  # ОШИБКА! Checker не пропустит
+
+try:
+    do_something()
+except Exception:
+    continue  # ОШИБКА! Молчаливый пропуск
+
+# ПРАВИЛЬНО - уведомляем пользователя!
+try:
+    do_something()
+except Exception as e:
+    show_error("Ошибка", "Не удалось выполнить действие", details=str(e))
+
+# Допустимо - return/raise обрабатывают ошибку
+try:
+    result = get_value()
+except Exception as e:
+    return None, str(e)  # Возвращаем ошибку для обработки выше
+
+try:
+    do_something()
+except Exception:
+    raise  # Перебрасываем исключение
+
+# Исключение: OperationCanceledException (ESC нажат пользователем)
+try:
+    ref = uidoc.Selection.PickObject(...)
+except OperationCanceledException:
+    break  # OK - штатный выход, не ошибка
+```
+
+### КРИТИЧНО: PickObject и модальные формы
+
+**PickObject НЕЛЬЗЯ вызывать из модального диалога (ShowDialog)!**
+Это вызывает ошибку: `Cannot re-enter the pick operation`
+
+```python
+# НЕПРАВИЛЬНО - PickObject внутри обработчика модальной формы!
+class MyForm(Form):
+    def on_pick_button(self, sender, args):
+        self.Hide()  # Не поможет!
+        ref = uidoc.Selection.PickObject(...)  # ОШИБКА!
+
+# ПРАВИЛЬНО - Закрыть форму, выбрать, открыть снова
+class MyForm(Form):
+    def on_pick_button(self, sender, args):
+        # Сохраняем состояние
+        self.saved_data = self.get_current_data()
+        # Закрываем форму с специальным результатом
+        self.DialogResult = DialogResult.Retry
+        self.Close()
+
+# В main:
+while True:
+    form = MyForm()
+    form.restore_state(saved_data)  # Восстанавливаем состояние
+    result = form.ShowDialog()
+
+    if result == DialogResult.Retry:
+        # Форма закрыта - теперь можно выбирать
+        saved_data = form.saved_data
+        ref = uidoc.Selection.PickObject(...)  # OK!
+        # Продолжаем цикл - форма откроется снова
+
+    elif result == DialogResult.OK:
+        # Обрабатываем результат
+        break
+    else:
+        break  # Отмена
+```
+
+**Паттерн DialogResult.Retry:**
+1. Кнопка "Выбрать" закрывает форму с `DialogResult.Retry`
+2. В main проверяем результат и вызываем `PickObject`
+3. Создаём новую форму и восстанавливаем состояние
+4. Показываем форму снова
 
 ## Проверка авторизации (КРИТИЧНО!)
 
@@ -649,6 +737,39 @@ def get_clean_env():
     env.pop('PYTHONPATH', None)
     env.pop('IRONPYTHONPATH', None)
     return env
+```
+
+**Применять для:**
+
+### Устаревшие импорты Revit API (Revit 2022+)
+
+В Revit 2022+ многие классы были помечены как deprecated и заменены на ForgeTypeId:
+
+**НЕЛЬЗЯ импортировать (вызовет ImportError):**
+```python
+# НЕПРАВИЛЬНО - deprecated в Revit 2022+!
+from Autodesk.Revit.DB import BuiltInParameterGroup  # ImportError!
+from Autodesk.Revit.DB import ParameterType          # ImportError!
+from Autodesk.Revit.DB import UnitType               # ImportError!
+from Autodesk.Revit.DB import DisplayUnitType        # ImportError!
+```
+
+**Замены:**
+- `BuiltInParameterGroup` → `GroupTypeId` (или удалить, если не критично)
+- `ParameterType` → `ForgeTypeId` / `SpecTypeId`
+- `UnitType` → `ForgeTypeId` / `SpecTypeId`
+- `DisplayUnitType` → `ForgeTypeId` / `UnitTypeId`
+
+**Пример - добавление параметра в семейство:**
+```python
+# В Revit 2022+ FamilyManager.AddParameter() изменился
+# Вместо BuiltInParameterGroup и ParameterType используйте альтернативы:
+
+# Вариант 1: Не добавлять параметры программно, использовать готовое семейство
+# Вариант 2: Использовать ForgeTypeId (сложнее)
+# Вариант 3: Использовать SharedParameter через ExternalDefinition
+
+# Простейший путь - создать семейство вручную и загрузить из папки
 ```
 
 **Применять для:** любых вызовов `python`, `pip`, `venv`, `virtualenv` через subprocess.
