@@ -21,10 +21,8 @@ if LIB_DIR not in sys.path:
 
 from cpsk_notify import show_info, show_success, show_warning, show_error
 
-# Конфигурация GitHub
-GITHUB_USER = "fesworkscience"
-GITHUB_REPO = "pyrevit_rocket"
-GITHUB_API_URL = "https://api.github.com/repos/{}/{}/releases/latest".format(GITHUB_USER, GITHUB_REPO)
+# Конфигурация API
+RELEASES_API_URL = "https://rocket-tools.ru/api/rocketrevit/releases/latest/"
 
 
 def get_current_version():
@@ -54,45 +52,36 @@ def parse_version(version_str):
         return (0, 0, 0)
 
 
+def fetch_json(url):
+    """Загрузить JSON с URL (Python 2/3 совместимость)."""
+    # Определяем версию Python
+    if sys.version_info[0] >= 3:
+        import urllib.request
+        request = urllib.request.Request(url)
+        request.add_header('User-Agent', 'CPSK-Tools-Updater')
+        response = urllib.request.urlopen(request, timeout=10)
+        return json.loads(response.read().decode('utf-8'))
+    else:
+        import urllib2
+        request = urllib2.Request(url)
+        request.add_header('User-Agent', 'CPSK-Tools-Updater')
+        response = urllib2.urlopen(request, timeout=10)
+        return json.load(response)
+
+
 def check_for_updates():
     """
-    Проверить наличие обновлений на GitHub.
+    Проверить наличие обновлений через API rocket-tools.ru.
 
     Returns:
-        tuple: (has_update, latest_version, download_url, release_name)
+        tuple: (has_update, latest_version, download_url, release_notes, current_version)
     """
     try:
-        # Python 2/3 совместимость для HTTP запросов
-        try:
-            # Python 2
-            import urllib2
-            request = urllib2.Request(GITHUB_API_URL)
-            request.add_header('User-Agent', 'CPSK-Tools-Updater')
-            response = urllib2.urlopen(request, timeout=10)
-            data = json.load(response)
-        except ImportError:
-            # Python 3
-            import urllib.request
-            request = urllib.request.Request(GITHUB_API_URL)
-            request.add_header('User-Agent', 'CPSK-Tools-Updater')
-            response = urllib.request.urlopen(request, timeout=10)
-            data = json.loads(response.read().decode('utf-8'))
+        data = fetch_json(RELEASES_API_URL)
 
-        latest_version = data.get("tag_name", "v0.0.0").lstrip('v')
-        release_name = data.get("name", "")
-
-        # Получить ссылку на скачивание
-        download_url = ""
-        assets = data.get("assets", [])
-        for asset in assets:
-            name = asset.get("name", "")
-            if name.endswith(".msi") or name.endswith(".zip"):
-                download_url = asset.get("browser_download_url", "")
-                break
-
-        # Если нет assets, используем страницу релиза
-        if not download_url:
-            download_url = data.get("html_url", "https://github.com/{}/{}/releases".format(GITHUB_USER, GITHUB_REPO))
+        latest_version = data.get("version", "0.0.0")
+        release_notes = data.get("release_notes", "")
+        download_url = data.get("download_url", "https://rocket-tools.ru")
 
         current_version = get_current_version()
 
@@ -102,7 +91,7 @@ def check_for_updates():
 
         has_update = latest_tuple > current_tuple
 
-        return has_update, latest_version, download_url, release_name, current_version
+        return has_update, latest_version, download_url, release_notes, current_version
 
     except Exception as e:
         return None, None, None, None, str(e)
@@ -111,7 +100,7 @@ def check_for_updates():
 def main():
     """Основная функция."""
     # Сразу делаем запрос (занимает 1-2 сек)
-    has_update, latest_version, download_url, release_name, current_or_error = check_for_updates()
+    has_update, latest_version, download_url, release_notes, current_or_error = check_for_updates()
 
     if has_update is None:
         # Ошибка при проверке
@@ -129,8 +118,8 @@ def main():
             latest_version,
             download_url
         )
-        if release_name:
-            details = "Релиз: {}\n\n{}".format(release_name, details)
+        if release_notes:
+            details = "{}\n\n{}".format(release_notes, details)
 
         show_warning(
             "Доступно обновление",

@@ -7,7 +7,7 @@ Global configuration variables for the project.
 import os
 
 # Debug mode - disables authentication requirement
-DEBUG = True
+DEBUG = False
 
 # Gemini API Token
 GEMINI_TOKEN = os.environ.get("GEMINI_TOKEN", "")

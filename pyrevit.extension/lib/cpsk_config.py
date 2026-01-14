@@ -15,9 +15,43 @@ PROJECT_DIR = os.path.dirname(EXTENSION_DIR)  # Корень проекта (pyr
 SETTINGS_FILE = os.path.join(PROJECT_DIR, "cpsk_settings.yaml")
 LIB_DIR = _THIS_DIR
 
-# Путь к venv в AppData\Local (не синхронизируется OneDrive, доступен без админ-прав)
-VENV_BASE_DIR = os.path.join(os.environ.get("LOCALAPPDATA", r"C:\Users\{}".format(os.environ.get("USERNAME", "User")) + r"\AppData\Local"), "cpsk_envs")
+# Путь к venv - фиксированные диски (вне OneDrive)
+# Приоритет: C:\cpsk_envs, D:\cpsk_envs
 VENV_NAME = "pyrevit_rocket"
+_CANDIDATE_DIRS = [r"C:\cpsk_envs", r"D:\cpsk_envs"]
+
+
+def _find_writable_base_dir():
+    """
+    Найти директорию для venv с возможностью записи.
+    Проверяет через создание/удаление временного файла.
+    """
+    for base_dir in _CANDIDATE_DIRS:
+        try:
+            # Создаём папку если не существует
+            if not os.path.exists(base_dir):
+                os.makedirs(base_dir)
+
+            # Пробуем создать временный файл
+            test_file = os.path.join(base_dir, "_write_test.tmp")
+            with codecs.open(test_file, 'w', 'utf-8') as f:
+                f.write("test")
+
+            # Удаляем тестовый файл
+            os.remove(test_file)
+
+            # Успех - этот диск доступен для записи
+            return base_dir
+        except (IOError, OSError, WindowsError):
+            # Нет прав или диск недоступен - пробуем следующий
+            continue
+
+    # Fallback на первый вариант (покажет ошибку при установке)
+    return _CANDIDATE_DIRS[0]
+
+
+# Определяем базовую директорию при импорте модуля
+VENV_BASE_DIR = _find_writable_base_dir()
 
 # Значения по умолчанию
 # Примечание: venv_path и requirements_path фиксированы в коде (get_venv_path, get_requirements_path)
