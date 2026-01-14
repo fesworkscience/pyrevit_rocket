@@ -74,15 +74,14 @@ def check_for_updates():
     Проверить наличие обновлений через API rocket-tools.ru.
 
     Returns:
-        tuple: (has_update, latest_version, download_url, release_notes, current_version)
+        tuple: (has_update, latest_version, download_url, release_notes, current_version_or_error)
     """
     try:
         data = fetch_json(RELEASES_API_URL)
 
         latest_version = data.get("version", "0.0.0")
+        download_url = data.get("download_url", "")
         release_notes = data.get("release_notes", "")
-        download_url = data.get("download_url", "https://rocket-tools.ru")
-
         current_version = get_current_version()
 
         # Сравнить версии
@@ -95,6 +94,20 @@ def check_for_updates():
 
     except Exception as e:
         return None, None, None, None, str(e)
+
+
+def format_date(iso_date):
+    """Форматировать ISO дату в читаемый вид."""
+    if not iso_date:
+        return "-"
+    try:
+        # 2026-01-14T20:15:50.409182Z -> 14.01.2026 20:15
+        date_part = iso_date.split('T')[0]
+        time_part = iso_date.split('T')[1].split('.')[0][:5]
+        parts = date_part.split('-')
+        return "{}.{}.{} {}".format(parts[2], parts[1], parts[0], time_part)
+    except:
+        return iso_date
 
 
 def main():
@@ -128,9 +141,17 @@ def main():
         )
     else:
         # Версия актуальна
+        details = "Версия: {}\n\nСсылка для скачивания:\n{}".format(
+            current_or_error,
+            download_url
+        )
+        if release_notes:
+            details = "{}\n\n{}".format(release_notes, details)
+
         show_success(
             "Версия актуальна",
-            "У вас установлена последняя версия: {}".format(current_or_error)
+            "У вас установлена последняя версия: {}".format(current_or_error),
+            details=details
         )
 
 

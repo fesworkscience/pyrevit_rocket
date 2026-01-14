@@ -21,7 +21,7 @@ import System
 from System.Windows.Forms import (
     Form, Label, Button, CheckBox, RadioButton, GroupBox,
     Panel, OpenFileDialog, ProgressBar, DialogResult,
-    FormStartPosition, FormBorderStyle, DockStyle, AnchorStyles,
+    FormStartPosition, FormBorderStyle, TextBox,
     MessageBox, MessageBoxButtons, MessageBoxIcon
 )
 from System.Drawing import Point, Size, Color, Font, FontStyle
@@ -41,12 +41,9 @@ if not require_auth():
 
 from pyrevit import revit, script
 from Autodesk.Revit.DB import (
-    Transaction, XYZ, Line, Plane,
-    DirectShape, DirectShapeLibrary, DirectShapeType,
-    ElementId, BuiltInCategory,
-    TessellatedShapeBuilder, TessellatedFace, ShapeBuilderTarget, ShapeBuilderFallback,
-    ViewPlan, Level, FilteredElementCollector,
-    BoundingBoxXYZ, ViewFamilyType
+    Transaction, XYZ, Line,
+    DirectShape, ElementId, BuiltInCategory,
+    ViewPlan, Level, FilteredElementCollector, ViewFamilyType
 )
 
 doc = revit.doc
@@ -218,69 +215,27 @@ def get_points_bounds(points):
     return min_z, max_z, center_z
 
 
-def create_directshape_from_points(doc, points, colors, name, use_colors=True):
+def create_point_cloud(doc, points, name, cross_size_mm=10, max_points=30000):
     """
-    Создаёт DirectShape из точек.
-    Для визуализации создаём маленькие тетраэдры в каждой точке.
-    """
-    # Размер точки (в футах) ~ 5мм
-    point_size = mm_to_feet(5)
-
-    # Создаём DirectShape
-    ds_type = DirectShape.CreateElement(doc, ElementId(BuiltInCategory.OST_GenericModel))
-
-    builder = TessellatedShapeBuilder()
-    builder.OpenConnectedFaceSet(False)
-
-    # Для каждой точки создаём маленький тетраэдр
-    # Ограничиваем количество для производительности
-    max_points = min(len(points), 50000)
-    step = max(1, len(points) // max_points)
-
-    for i in range(0, len(points), step):
-        p = points[i]
-
-        # Вершины тетраэдра
-        v0 = p
-        v1 = XYZ(p.X + point_size, p.Y, p.Z)
-        v2 = XYZ(p.X, p.Y + point_size, p.Z)
-        v3 = XYZ(p.X, p.Y, p.Z + point_size)
-
-        # 4 грани тетраэдра
-        try:
-            builder.AddFace(TessellatedFace([v0, v2, v1], ElementId.InvalidElementId))
-            builder.AddFace(TessellatedFace([v0, v1, v3], ElementId.InvalidElementId))
-            builder.AddFace(TessellatedFace([v0, v3, v2], ElementId.InvalidElementId))
-            builder.AddFace(TessellatedFace([v1, v2, v3], ElementId.InvalidElementId))
-        except:
-            continue
-
-    builder.CloseConnectedFaceSet()
-    builder.Target = ShapeBuilderTarget.Solid
-    builder.Fallback = ShapeBuilderFallback.Mesh
-
-    result = builder.Build()
-
-    if result.Outcome == result.Outcome.Success:
-        ds_type.SetShape(list(result.GetGeometricalObjects()))
-
-    return ds_type
-
-
-def create_point_cloud_simple(doc, points, name):
-    """
-    Создаёт упрощённое представление точечного облака через линии.
+    Создаёт представление точечного облака через линии.
     Каждая точка представлена как маленький крест из линий.
+
+    Args:
+        doc: Revit document
+        points: список XYZ точек
+        name: имя для DirectShape
+        cross_size_mm: размер креста в мм
+        max_points: максимальное количество точек для отображения
     """
     # Создаём DirectShape с линиями
     ds = DirectShape.CreateElement(doc, ElementId(BuiltInCategory.OST_GenericModel))
 
     curves = []
-    cross_size = mm_to_feet(10)  # 10мм крест
+    cross_size = mm_to_feet(cross_size_mm)
 
     # Ограничиваем количество точек
-    max_points = min(len(points), 20000)
-    step = max(1, len(points) // max_points)
+    actual_max = min(len(points), max_points)
+    step = max(1, len(points) // actual_max)
 
     for i in range(0, len(points), step):
         p = points[i]
@@ -304,7 +259,7 @@ def create_point_cloud_simple(doc, points, name):
     if curves:
         ds.SetShape(curves)
 
-    return ds
+    return ds, len(curves) // 3  # Возвращаем количество отображённых точек
 
 
 def get_or_create_level(doc, elevation, name):
@@ -394,45 +349,49 @@ class PLYLoaderForm(Form):
 
         y += 50
 
-        # Группа опций цвета
-        grp_color = GroupBox()
-        grp_color.Text = "Цвета"
-        grp_color.Location = Point(15, y)
-        grp_color.Size = Size(200, 70)
+        # Группа настроек отображения
+        grp_display = GroupBox()
+        grp_display.Text = "Настройки отображения"
+        grp_display.Location = Point(15, y)
+        grp_display.Size = Size(405, 75)
 
-        self.rb_with_colors = RadioButton()
-        self.rb_with_colors.Text = "С цветами"
-        self.rb_with_colors.Location = Point(15, 20)
-        self.rb_with_colors.Checked = True
-        grp_color.Controls.Add(self.rb_with_colors)
+        # Размер точки
+        lbl_size = Label()
+        lbl_size.Text = "Размер точки (мм):"
+        lbl_size.Location = Point(15, 22)
+        lbl_size.Size = Size(120, 20)
+        grp_display.Controls.Add(lbl_size)
 
-        self.rb_no_colors = RadioButton()
-        self.rb_no_colors.Text = "Без цветов"
-        self.rb_no_colors.Location = Point(15, 42)
-        grp_color.Controls.Add(self.rb_no_colors)
+        self.txt_point_size = TextBox()
+        self.txt_point_size.Text = "10"
+        self.txt_point_size.Location = Point(140, 20)
+        self.txt_point_size.Size = Size(50, 20)
+        grp_display.Controls.Add(self.txt_point_size)
 
-        self.Controls.Add(grp_color)
+        # Макс. количество точек
+        lbl_max = Label()
+        lbl_max.Text = "Макс. точек:"
+        lbl_max.Location = Point(210, 22)
+        lbl_max.Size = Size(80, 20)
+        grp_display.Controls.Add(lbl_max)
 
-        # Группа опций представления
-        grp_type = GroupBox()
-        grp_type.Text = "Тип представления"
-        grp_type.Location = Point(225, y)
-        grp_type.Size = Size(200, 70)
+        self.txt_max_points = TextBox()
+        self.txt_max_points.Text = "30000"
+        self.txt_max_points.Location = Point(295, 20)
+        self.txt_max_points.Size = Size(70, 20)
+        grp_display.Controls.Add(self.txt_max_points)
 
-        self.rb_directshape = RadioButton()
-        self.rb_directshape.Text = "DirectShape (меши)"
-        self.rb_directshape.Location = Point(15, 20)
-        self.rb_directshape.Checked = True
-        grp_type.Controls.Add(self.rb_directshape)
+        # Подсказка
+        lbl_hint = Label()
+        lbl_hint.Text = "Точки отображаются как 3D-кресты из линий"
+        lbl_hint.Location = Point(15, 48)
+        lbl_hint.Size = Size(380, 20)
+        lbl_hint.ForeColor = Color.Gray
+        grp_display.Controls.Add(lbl_hint)
 
-        self.rb_points = RadioButton()
-        self.rb_points.Text = "Точки (линии)"
-        self.rb_points.Location = Point(15, 42)
-        grp_type.Controls.Add(self.rb_points)
+        self.Controls.Add(grp_display)
 
-        self.Controls.Add(grp_type)
-
-        y += 80
+        y += 85
 
         # Опция создания планов
         self.chk_create_plans = CheckBox()
@@ -498,13 +457,6 @@ class PLYLoaderForm(Form):
                 info += " | Формат: {}".format("Binary" if is_binary else "ASCII")
                 self.lbl_info.Text = info
 
-                # Включаем/выключаем опцию цветов
-                if not has_colors:
-                    self.rb_no_colors.Checked = True
-                    self.rb_with_colors.Enabled = False
-                else:
-                    self.rb_with_colors.Enabled = True
-
     def update_progress(self, value):
         self.progress.Value = value
         System.Windows.Forms.Application.DoEvents()
@@ -514,10 +466,24 @@ class PLYLoaderForm(Form):
             show_warning("Внимание", "Выберите PLY файл")
             return
 
+        # Валидация числовых полей
+        try:
+            point_size = int(self.txt_point_size.Text)
+            max_points = int(self.txt_max_points.Text)
+            if point_size < 1 or point_size > 100:
+                show_warning("Внимание", "Размер точки должен быть от 1 до 100 мм")
+                return
+            if max_points < 1000 or max_points > 100000:
+                show_warning("Внимание", "Количество точек должно быть от 1000 до 100000")
+                return
+        except ValueError:
+            show_warning("Внимание", "Введите корректные числа")
+            return
+
         self.result = {
             "path": self.ply_path,
-            "with_colors": self.rb_with_colors.Checked,
-            "use_directshape": self.rb_directshape.Checked,
+            "point_size_mm": point_size,
+            "max_points": max_points,
             "create_plans": self.chk_create_plans.Checked
         }
         self.DialogResult = DialogResult.OK
@@ -536,15 +502,15 @@ def main():
 
     opts = form.result
     ply_path = opts["path"]
-    with_colors = opts["with_colors"]
-    use_directshape = opts["use_directshape"]
+    point_size_mm = opts["point_size_mm"]
+    max_points = opts["max_points"]
     create_plans = opts["create_plans"]
 
     # Парсим PLY файл
     output.print_md("## Загрузка PLY файла...")
     output.print_md("Файл: {}".format(os.path.basename(ply_path)))
 
-    points, colors = parse_ply_binary(ply_path, with_colors)
+    points, colors = parse_ply_binary(ply_path, with_colors=False)
 
     if not points:
         show_error("Ошибка", "Не удалось прочитать PLY файл")
@@ -560,17 +526,15 @@ def main():
     with Transaction(doc, "Загрузка SLAM PLY") as t:
         t.Start()
 
-        # Создаём DirectShape или точечное облако
+        # Создаём точечное облако
         scan_name = os.path.splitext(os.path.basename(ply_path))[0]
 
-        if use_directshape:
-            output.print_md("Создание DirectShape...")
-            ds = create_directshape_from_points(doc, points, colors, scan_name, with_colors)
-            output.print_md("DirectShape создан")
-        else:
-            output.print_md("Создание точечного облака...")
-            ds = create_point_cloud_simple(doc, points, scan_name)
-            output.print_md("Точечное облако создано")
+        output.print_md("Создание точечного облака...")
+        output.print_md("- Размер точки: {} мм".format(point_size_mm))
+        output.print_md("- Макс. точек: {:,}".format(max_points).replace(',', ' '))
+
+        ds, displayed_points = create_point_cloud(doc, points, scan_name, point_size_mm, max_points)
+        output.print_md("Отображено точек: **{:,}**".format(displayed_points).replace(',', ' '))
 
         # Создаём планы если нужно
         if create_plans:
@@ -602,10 +566,10 @@ def main():
 
     show_success(
         "Загрузка завершена",
-        "Загружено {:,} точек".format(len(points)).replace(',', ' '),
-        details="Файл: {}\nТип: {}\nПланы: {}".format(
+        "Отображено {:,} из {:,} точек".format(displayed_points, len(points)).replace(',', ' '),
+        details="Файл: {}\nРазмер точки: {} мм\nПланы: {}".format(
             os.path.basename(ply_path),
-            "DirectShape" if use_directshape else "Точки",
+            point_size_mm,
             "Созданы" if create_plans else "Не создавались"
         )
     )
