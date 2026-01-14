@@ -29,11 +29,12 @@ clr.AddReference('System.Drawing')
 
 import System
 from System.Windows.Forms import (
-    Form, Label, TextBox, Button, Panel, Timer,
+    Form, Label, TextBox, Button, Panel, Timer, LinkLabel,
     DockStyle, FormStartPosition, FormBorderStyle,
     ScrollBars, AnchorStyles, Clipboard, DialogResult
 )
-from System.Drawing import Point, Size, Font, FontStyle, Rectangle
+from System.Drawing import Point, Size, Font, FontStyle, Rectangle, Color
+import System.Diagnostics as Diagnostics
 
 
 def get_revit_window_bounds():
@@ -86,7 +87,7 @@ class NotificationForm(Form):
     """Уведомление в стандартном стиле WinForms с возможностью развернуть детали."""
 
     def __init__(self, title, message, details=None, notification_type=NotificationType.INFO,
-                 blocking=True, auto_close=0):
+                 blocking=True, auto_close=0, link_url=None, link_text=None):
         """
         Args:
             title: Заголовок уведомления
@@ -95,6 +96,8 @@ class NotificationForm(Form):
             notification_type: Тип уведомления (error/warning/info/success)
             blocking: True - модальное окно, False - неблокирующий тост
             auto_close: Секунды до автозакрытия (0 = не закрывать)
+            link_url: URL для кликабельной ссылки (опционально)
+            link_text: Текст ссылки (по умолчанию = link_url)
         """
         self.title_text = title
         self.message_text = message
@@ -102,6 +105,8 @@ class NotificationForm(Form):
         self.notification_type = notification_type
         self.blocking = blocking
         self.auto_close = auto_close
+        self.link_url = link_url
+        self.link_text = link_text or link_url
         self.expanded = False
         self.collapsed_height = 130
         self.expanded_height = 300
@@ -141,6 +146,20 @@ class NotificationForm(Form):
         self.Controls.Add(self.lbl_message)
 
         y += 45
+
+        # Кликабельная ссылка (если задана)
+        if self.link_url:
+            self.lbl_link = LinkLabel()
+            self.lbl_link.Text = self.link_text
+            self.lbl_link.Location = Point(15, y)
+            self.lbl_link.Size = Size(360, 20)
+            self.lbl_link.LinkColor = Color.Blue
+            self.lbl_link.LinkClicked += self.on_link_clicked
+            self.Controls.Add(self.lbl_link)
+            y += 25
+            # Увеличиваем высоту формы
+            self.collapsed_height += 25
+            self.Height = self.collapsed_height
 
         # Кнопки
         btn_x = 15
@@ -247,6 +266,17 @@ class NotificationForm(Form):
 
         except Exception:
             pass
+
+    def on_link_clicked(self, sender, args):
+        """Открыть ссылку в браузере."""
+        try:
+            Diagnostics.Process.Start(self.link_url)
+        except Exception:
+            # Если не удалось открыть - копируем в буфер
+            try:
+                Clipboard.SetText(self.link_url)
+            except:
+                pass
 
     def on_close(self, sender, args):
         """Закрыть форму."""
@@ -363,13 +393,15 @@ class ConfirmationForm(Form):
 
 
 def _show_notification(title, message, details=None, notification_type=NotificationType.INFO,
-                       blocking=True, auto_close=0):
+                       blocking=True, auto_close=0, link_url=None, link_text=None):
     """Внутренняя функция показа уведомления."""
     form = NotificationForm(
         title, message, details,
         notification_type=notification_type,
         blocking=blocking,
-        auto_close=auto_close
+        auto_close=auto_close,
+        link_url=link_url,
+        link_text=link_text
     )
 
     if blocking:
@@ -378,7 +410,7 @@ def _show_notification(title, message, details=None, notification_type=Notificat
         form.Show()
 
 
-def show_error(title, message, details=None, blocking=True, auto_close=0):
+def show_error(title, message, details=None, blocking=True, auto_close=0, link_url=None, link_text=None):
     """
     Показать уведомление об ошибке.
 
@@ -388,11 +420,13 @@ def show_error(title, message, details=None, blocking=True, auto_close=0):
         details: Детальная информация (опционально, разворачивается)
         blocking: True - модальное окно, False - неблокирующий тост
         auto_close: Секунды до автозакрытия (0 = не закрывать, только для blocking=False)
+        link_url: URL для кликабельной ссылки (опционально)
+        link_text: Текст ссылки (по умолчанию = link_url)
     """
-    _show_notification(title, message, details, NotificationType.ERROR, blocking, auto_close)
+    _show_notification(title, message, details, NotificationType.ERROR, blocking, auto_close, link_url, link_text)
 
 
-def show_warning(title, message, details=None, blocking=True, auto_close=0):
+def show_warning(title, message, details=None, blocking=True, auto_close=0, link_url=None, link_text=None):
     """
     Показать предупреждение.
 
@@ -402,11 +436,13 @@ def show_warning(title, message, details=None, blocking=True, auto_close=0):
         details: Детальная информация (опционально)
         blocking: True - модальное окно, False - неблокирующий тост
         auto_close: Секунды до автозакрытия
+        link_url: URL для кликабельной ссылки (опционально)
+        link_text: Текст ссылки (по умолчанию = link_url)
     """
-    _show_notification(title, message, details, NotificationType.WARNING, blocking, auto_close)
+    _show_notification(title, message, details, NotificationType.WARNING, blocking, auto_close, link_url, link_text)
 
 
-def show_info(title, message, details=None, blocking=True, auto_close=0):
+def show_info(title, message, details=None, blocking=True, auto_close=0, link_url=None, link_text=None):
     """
     Показать информационное уведомление.
 
@@ -416,11 +452,13 @@ def show_info(title, message, details=None, blocking=True, auto_close=0):
         details: Детальная информация (опционально)
         blocking: True - модальное окно, False - неблокирующий тост
         auto_close: Секунды до автозакрытия
+        link_url: URL для кликабельной ссылки (опционально)
+        link_text: Текст ссылки (по умолчанию = link_url)
     """
-    _show_notification(title, message, details, NotificationType.INFO, blocking, auto_close)
+    _show_notification(title, message, details, NotificationType.INFO, blocking, auto_close, link_url, link_text)
 
 
-def show_success(title, message, details=None, blocking=True, auto_close=0):
+def show_success(title, message, details=None, blocking=True, auto_close=0, link_url=None, link_text=None):
     """
     Показать уведомление об успехе.
 
@@ -430,8 +468,10 @@ def show_success(title, message, details=None, blocking=True, auto_close=0):
         details: Детальная информация (опционально)
         blocking: True - модальное окно, False - неблокирующий тост
         auto_close: Секунды до автозакрытия
+        link_url: URL для кликабельной ссылки (опционально)
+        link_text: Текст ссылки (по умолчанию = link_url)
     """
-    _show_notification(title, message, details, NotificationType.SUCCESS, blocking, auto_close)
+    _show_notification(title, message, details, NotificationType.SUCCESS, blocking, auto_close, link_url, link_text)
 
 
 def show_toast(title, message, details=None, notification_type="success", auto_close=7):

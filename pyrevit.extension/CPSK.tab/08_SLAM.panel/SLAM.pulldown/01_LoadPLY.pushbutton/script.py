@@ -533,9 +533,12 @@ def main():
     max_points = opts["max_points"]
     create_plans = opts["create_plans"]
 
+    # Собираем лог для вывода в details
+    log = []
+
     # Парсим PLY файл
-    output.print_md("## Загрузка PLY файла...")
-    output.print_md("Файл: {}".format(os.path.basename(ply_path)))
+    log.append("=== Загрузка PLY файла ===")
+    log.append("Файл: {}".format(os.path.basename(ply_path)))
 
     points, colors = parse_ply_binary(ply_path, with_colors=False)
 
@@ -543,11 +546,12 @@ def main():
         show_error("Ошибка", "Не удалось прочитать PLY файл")
         return
 
-    output.print_md("Загружено точек: **{:,}**".format(len(points)).replace(',', ' '))
+    log.append("Загружено точек: {:,}".format(len(points)).replace(',', ' '))
 
     # Получаем границы
     min_z, max_z, center_z = get_points_bounds(points)
-    output.print_md("Диапазон высот: {:.2f}м - {:.2f}м".format(min_z / 3.28084, max_z / 3.28084))
+    log.append("Диапазон высот: {:.2f}м - {:.2f}м".format(min_z / 3.28084, max_z / 3.28084))
+    log.append("")
 
     # Создаём геометрию в Revit
     with Transaction(doc, "Загрузка SLAM PLY") as t:
@@ -556,16 +560,18 @@ def main():
         # Создаём точечное облако
         scan_name = os.path.splitext(os.path.basename(ply_path))[0]
 
-        output.print_md("Создание точечного облака...")
-        output.print_md("- Размер точки: {} мм".format(point_size_mm))
-        output.print_md("- Макс. точек: {:,}".format(max_points).replace(',', ' '))
+        log.append("=== Точечное облако ===")
+        log.append("Размер точки: {} мм".format(point_size_mm))
+        log.append("Макс. точек: {:,}".format(max_points).replace(',', ' '))
 
         ds, displayed_points = create_point_cloud(doc, points, scan_name, point_size_mm, max_points)
-        output.print_md("Отображено точек: **{:,}**".format(displayed_points).replace(',', ' '))
+        log.append("Отображено точек: {:,}".format(displayed_points).replace(',', ' '))
+        log.append("")
 
         # Создаём планы если нужно
+        created_plans = []
         if create_plans:
-            output.print_md("## Создание планов...")
+            log.append("=== Планы ===")
 
             # Три отметки: низ, середина, верх
             elevations = [
@@ -581,24 +587,23 @@ def main():
                     plan = create_floor_plan(doc, level)
                     if plan:
                         plan.Name = name
-                        output.print_md("- Создан план: {}".format(name))
+                        created_plans.append(name)
+                        log.append("+ {}".format(name))
                 except Exception as e:
                     plan_errors.append("{}: {}".format(name, str(e)))
+                    log.append("- {} (ошибка)".format(name))
                     continue
 
             if plan_errors:
-                show_warning("Предупреждение", "Некоторые планы не созданы", details="\n".join(plan_errors))
+                log.append("")
+                log.append("Ошибки: " + "; ".join(plan_errors))
 
         t.Commit()
 
     show_success(
         "Загрузка завершена",
         "Отображено {:,} из {:,} точек".format(displayed_points, len(points)).replace(',', ' '),
-        details="Файл: {}\nРазмер точки: {} мм\nПланы: {}".format(
-            os.path.basename(ply_path),
-            point_size_mm,
-            "Созданы" if create_plans else "Не создавались"
-        )
+        details="\n".join(log)
     )
 
 
