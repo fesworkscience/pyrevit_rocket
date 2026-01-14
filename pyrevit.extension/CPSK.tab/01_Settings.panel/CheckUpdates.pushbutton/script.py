@@ -19,10 +19,13 @@ LIB_DIR = os.path.join(EXTENSION_DIR, "lib")
 if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
 
-from cpsk_notify import show_info, show_success, show_warning, show_error
+from pyrevit import script
+from cpsk_notify import show_error
 
 # Конфигурация API
 RELEASES_API_URL = "https://rocket-tools.ru/api/rocketrevit/releases/latest/"
+
+output = script.get_output()
 
 
 def get_current_version():
@@ -66,7 +69,11 @@ def fetch_json(url):
         request = urllib2.Request(url)
         request.add_header('User-Agent', 'CPSK-Tools-Updater')
         response = urllib2.urlopen(request, timeout=10)
-        return json.load(response)
+        # Читаем как bytes и декодируем UTF-8
+        raw_data = response.read()
+        if isinstance(raw_data, bytes):
+            raw_data = raw_data.decode('utf-8')
+        return json.loads(raw_data)
 
 
 def check_for_updates():
@@ -96,20 +103,6 @@ def check_for_updates():
         return None, None, None, None, str(e)
 
 
-def format_date(iso_date):
-    """Форматировать ISO дату в читаемый вид."""
-    if not iso_date:
-        return "-"
-    try:
-        # 2026-01-14T20:15:50.409182Z -> 14.01.2026 20:15
-        date_part = iso_date.split('T')[0]
-        time_part = iso_date.split('T')[1].split('.')[0][:5]
-        parts = date_part.split('-')
-        return "{}.{}.{} {}".format(parts[2], parts[1], parts[0], time_part)
-    except:
-        return iso_date
-
-
 def main():
     """Основная функция."""
     # Сразу делаем запрос (занимает 1-2 сек)
@@ -125,34 +118,25 @@ def main():
         return
 
     if has_update:
-        # Есть обновление
-        details = "Текущая версия: {}\nНовая версия: {}\n\nСсылка для скачивания:\n{}".format(
-            current_or_error,
-            latest_version,
-            download_url
-        )
-        if release_notes:
-            details = "{}\n\n{}".format(release_notes, details)
-
-        show_warning(
-            "Доступно обновление",
-            "Доступна новая версия: {}".format(latest_version),
-            details=details
-        )
+        # Есть обновление - оранжевый заголовок
+        output.print_md("# :warning: Доступно обновление!")
+        output.print_md("**Текущая версия:** {}".format(current_or_error))
+        output.print_md("**Новая версия:** {}".format(latest_version))
     else:
-        # Версия актуальна
-        details = "Версия: {}\n\nСсылка для скачивания:\n{}".format(
-            current_or_error,
-            download_url
-        )
-        if release_notes:
-            details = "{}\n\n{}".format(release_notes, details)
+        # Версия актуальна - зелёный заголовок
+        output.print_md("# :white_check_mark: Версия актуальна")
+        output.print_md("**Установленная версия:** {}".format(current_or_error))
 
-        show_success(
-            "Версия актуальна",
-            "У вас установлена последняя версия: {}".format(current_or_error),
-            details=details
-        )
+    # Ссылка для скачивания
+    if download_url:
+        output.print_md("---")
+        output.print_md("**Скачать:** [{}]({})".format(download_url, download_url))
+
+    # Release notes
+    if release_notes:
+        output.print_md("---")
+        output.print_md("### Примечания к релизу")
+        output.print_md(release_notes)
 
 
 if __name__ == "__main__":

@@ -43,7 +43,8 @@ from pyrevit import revit, script
 from Autodesk.Revit.DB import (
     Transaction, XYZ, Line,
     DirectShape, ElementId, BuiltInCategory,
-    ViewPlan, Level, FilteredElementCollector, ViewFamilyType
+    ViewPlan, Level, FilteredElementCollector, ViewFamilyType,
+    PlanViewRange, PlanViewPlane
 )
 
 doc = revit.doc
@@ -278,8 +279,15 @@ def get_or_create_level(doc, elevation, name):
     return level
 
 
-def create_floor_plan(doc, level):
-    """Создать план этажа для уровня."""
+def create_floor_plan(doc, level, view_depth_mm=100):
+    """
+    Создать план этажа для уровня.
+
+    Args:
+        doc: Revit document
+        level: уровень для плана
+        view_depth_mm: глубина вида в мм (по умолчанию 100мм = 10см)
+    """
     # Ищем тип вида плана
     view_types = FilteredElementCollector(doc).OfClass(ViewFamilyType).ToElements()
     floor_plan_type = None
@@ -294,6 +302,25 @@ def create_floor_plan(doc, level):
 
     # Создаём план
     plan = ViewPlan.Create(doc, floor_plan_type.Id, level.Id)
+
+    # Настраиваем View Range для ограничения глубины
+    # Это скрывает всё что ниже view_depth от секущей плоскости
+    view_range = plan.GetViewRange()
+
+    # Устанавливаем все плоскости относительно уровня
+    depth_feet = mm_to_feet(view_depth_mm)
+
+    # Cut plane на уровне (offset = 0)
+    view_range.SetOffset(PlanViewPlane.CutPlane, 0)
+    # Bottom чуть ниже cut plane
+    view_range.SetOffset(PlanViewPlane.BottomClipPlane, -depth_feet)
+    # View Depth = Bottom (минимальная глубина)
+    view_range.SetOffset(PlanViewPlane.ViewDepthPlane, -depth_feet)
+    # Top выше уровня
+    view_range.SetOffset(PlanViewPlane.TopClipPlane, depth_feet * 2)
+
+    plan.SetViewRange(view_range)
+
     return plan
 
 
