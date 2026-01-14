@@ -379,9 +379,10 @@ class PyRevitChecker:
                 # Проверяем наличие cpsk_notify внутри блока (ТОЛЬКО cpsk_notify!)
                 if 'show_error' in line or 'show_warning' in line or 'show_info' in line or 'show_success' in line:
                     has_notify_in_block = True
-                # return, raise - допустимые варианты (возвращают/перебрасывают ошибку)
-                # pass и continue - НЕ допустимы (молчаливый пропуск)
-                if re.match(r'\s*(return|raise)\b', line):
+                # return, raise, continue - допустимые варианты
+                # (return/raise - возвращают/перебрасывают, continue - пропуск в цикле)
+                # pass - НЕ допустим (молчаливый пропуск без контроля потока)
+                if re.match(r'\s*(return|raise|continue)\b', line):
                     has_notify_in_block = True
 
         # Проверяем последний except если файл закончился

@@ -41,6 +41,11 @@ DEFAULT_SETTINGS = {
         "favorites": [],
         "run_counts": {},
         "last_runs": {}
+    },
+    "smart_openings": {
+        "offset_mm": 50,
+        "min_length_mm": 100,
+        "merge_tolerance_mm": 50
     }
 }
 
