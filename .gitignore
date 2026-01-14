@@ -28,6 +28,9 @@ setup_env.log
 
 .env
 
+# Large scan files
+*.ply
+
 # Sensitive scripts with credentials
 get_token.ps1
 upload_release.ps1

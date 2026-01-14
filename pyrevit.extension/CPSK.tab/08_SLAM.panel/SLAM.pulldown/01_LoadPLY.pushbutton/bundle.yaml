@@ -1,0 +1,3 @@
+title: "SLAM PLY\niOS"
+tooltip: "Загрузка PLY файла из iOS LiDAR сканера.\nСоздаёт DirectShape или точечное облако с опциональными цветами."
+author: CPSK
