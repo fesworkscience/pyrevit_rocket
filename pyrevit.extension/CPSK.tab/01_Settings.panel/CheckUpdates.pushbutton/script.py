@@ -6,10 +6,16 @@
 __title__ = "Проверить\nобновления"
 __author__ = "CPSK"
 
+import clr
+clr.AddReference('System')
+
 import os
 import sys
 import json
 import codecs
+
+from System.Net import WebClient
+from System.Text import Encoding
 
 # Добавляем lib в путь
 SCRIPT_DIR = os.path.dirname(__file__)
@@ -19,13 +25,11 @@ LIB_DIR = os.path.join(EXTENSION_DIR, "lib")
 if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
 
-from pyrevit import script
-from cpsk_notify import show_error
+from cpsk_notify import show_error, show_warning, show_success
 
 # Конфигурация API
 RELEASES_API_URL = "https://rocket-tools.ru/api/rocketrevit/releases/latest/"
-
-output = script.get_output()
+RELEASE_PAGE_URL = "https://rocket-tools.ru/api/rocketrevit/releases/{}/"  # Шаблон страницы релиза
 
 
 def get_current_version():
@@ -56,24 +60,12 @@ def parse_version(version_str):
 
 
 def fetch_json(url):
-    """Загрузить JSON с URL (Python 2/3 совместимость)."""
-    # Определяем версию Python
-    if sys.version_info[0] >= 3:
-        import urllib.request
-        request = urllib.request.Request(url)
-        request.add_header('User-Agent', 'CPSK-Tools-Updater')
-        response = urllib.request.urlopen(request, timeout=10)
-        return json.loads(response.read().decode('utf-8'))
-    else:
-        import urllib2
-        request = urllib2.Request(url)
-        request.add_header('User-Agent', 'CPSK-Tools-Updater')
-        response = urllib2.urlopen(request, timeout=10)
-        # Читаем как bytes и декодируем UTF-8
-        raw_data = response.read()
-        if isinstance(raw_data, bytes):
-            raw_data = raw_data.decode('utf-8')
-        return json.loads(raw_data)
+    """Загрузить JSON с URL используя .NET WebClient с UTF-8."""
+    client = WebClient()
+    client.Encoding = Encoding.UTF8
+    client.Headers.Add("User-Agent", "CPSK-Tools-Updater")
+    raw_data = client.DownloadString(url)
+    return json.loads(raw_data)
 
 
 def check_for_updates():
@@ -118,25 +110,29 @@ def main():
         return
 
     if has_update:
-        # Есть обновление - оранжевый заголовок
-        output.print_md("# :warning: Доступно обновление!")
-        output.print_md("**Текущая версия:** {}".format(current_or_error))
-        output.print_md("**Новая версия:** {}".format(latest_version))
+        # Есть обновление
+        message = "Текущая версия: {}\nНовая версия: {}".format(current_or_error, latest_version)
+        release_page = RELEASE_PAGE_URL.format(latest_version)
+
+        show_warning(
+            "Доступно обновление",
+            message,
+            details=release_notes if release_notes else None,
+            link_url=release_page,
+            link_text="Скачать {}".format(latest_version)
+        )
     else:
-        # Версия актуальна - зелёный заголовок
-        output.print_md("# :white_check_mark: Версия актуальна")
-        output.print_md("**Установленная версия:** {}".format(current_or_error))
+        # Версия актуальна
+        message = "Установлена последняя версия: {}".format(current_or_error)
+        release_page = RELEASE_PAGE_URL.format(current_or_error)
 
-    # Ссылка для скачивания
-    if download_url:
-        output.print_md("---")
-        output.print_md("**Скачать:** [{}]({})".format(download_url, download_url))
-
-    # Release notes
-    if release_notes:
-        output.print_md("---")
-        output.print_md("### Примечания к релизу")
-        output.print_md(release_notes)
+        show_success(
+            "Версия актуальна",
+            message,
+            details=release_notes if release_notes else None,
+            link_url=release_page,
+            link_text="Открыть страницу релиза"
+        )
 
 
 if __name__ == "__main__":

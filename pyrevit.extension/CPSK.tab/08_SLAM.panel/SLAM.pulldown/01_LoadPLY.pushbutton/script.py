@@ -2,7 +2,7 @@
 """
 SLAM PLY iOS - Загрузка PLY файлов из iOS LiDAR сканера.
 Поддерживает binary little endian формат с цветами.
-Создаёт DirectShape или точечное облако в Revit.
+Создаёт DirectShape по слоям высоты для управления видимостью на планах.
 """
 
 __title__ = "SLAM PLY\niOS"
@@ -19,12 +19,11 @@ clr.AddReference('System.Drawing')
 
 import System
 from System.Windows.Forms import (
-    Form, Label, Button, CheckBox, RadioButton, GroupBox,
-    Panel, OpenFileDialog, ProgressBar, DialogResult,
-    FormStartPosition, FormBorderStyle, TextBox,
-    MessageBox, MessageBoxButtons, MessageBoxIcon
+    Form, Label, Button, CheckBox, GroupBox,
+    OpenFileDialog, ProgressBar, DialogResult,
+    FormStartPosition, FormBorderStyle, TextBox
 )
-from System.Drawing import Point, Size, Color, Font, FontStyle
+from System.Drawing import Point, Size, Color
 
 # Добавляем lib в путь
 SCRIPT_DIR = os.path.dirname(__file__)
@@ -33,7 +32,7 @@ LIB_DIR = os.path.join(EXTENSION_DIR, "lib")
 if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
 
-from cpsk_notify import show_error, show_warning, show_info, show_success
+from cpsk_notify import show_error, show_warning, show_success
 from cpsk_auth import require_auth
 
 if not require_auth():
@@ -55,6 +54,11 @@ output = script.get_output()
 def mm_to_feet(mm):
     """Конвертация мм в футы."""
     return mm / 304.8
+
+
+def feet_to_m(feet):
+    """Конвертация футов в метры."""
+    return feet / 3.28084
 
 
 def m_to_feet(m):
@@ -94,27 +98,23 @@ def parse_ply_header(file_path):
     return vertex_count, has_colors, is_binary, header_size
 
 
-def parse_ply_binary(file_path, with_colors=True, progress_callback=None):
+def parse_ply_binary(file_path, progress_callback=None):
     """
     Парсит binary PLY файл.
     ARKit использует Y-up, Revit использует Z-up.
-    Конвертация: Revit_X = ARKit_X, Revit_Y = ARKit_Z, Revit_Z = ARKit_Y
+    Конвертация: Revit_X = ARKit_X, Revit_Y = -ARKit_Z, Revit_Z = ARKit_Y
 
-    Возвращает: (points, colors) где points - список XYZ, colors - список (r,g,b) или None
+    Возвращает: список точек [(x, y, z), ...] в метрах
     """
     vertex_count, has_colors, is_binary, header_size = parse_ply_header(file_path)
 
     if vertex_count is None:
-        return None, None
+        return None
 
     if not is_binary:
-        return parse_ply_ascii(file_path, with_colors, progress_callback)
+        return parse_ply_ascii(file_path, progress_callback)
 
     points = []
-    colors = [] if with_colors and has_colors else None
-
-    # Структура: 3 float (xyz) + 3 uchar (rgb) = 12 + 3 = 15 bytes per vertex
-    vertex_size = 12 + (3 if has_colors else 0)
 
     with open(file_path, 'rb') as f:
         f.seek(header_size)
@@ -129,42 +129,34 @@ def parse_ply_binary(file_path, with_colors=True, progress_callback=None):
             x, y, z = struct.unpack('<fff', data)
 
             # Конвертация из ARKit (Y-up) в Revit (Z-up)
-            # ARKit: X-right, Y-up, Z-backward
-            # Revit: X-right, Y-forward, Z-up
             revit_x = x
-            revit_y = -z  # ARKit Z backward -> Revit Y forward (инвертируем)
-            revit_z = y   # ARKit Y up -> Revit Z up
+            revit_y = -z
+            revit_z = y
 
-            # Координаты в метрах -> футы
-            points.append(XYZ(m_to_feet(revit_x), m_to_feet(revit_y), m_to_feet(revit_z)))
+            points.append((revit_x, revit_y, revit_z))
 
-            # Читаем цвета если есть
+            # Пропускаем цвета если есть
             if has_colors:
-                color_data = f.read(3)
-                if len(color_data) == 3:
-                    r, g, b = struct.unpack('<BBB', color_data)
-                    if colors is not None:
-                        colors.append((r, g, b))
+                f.read(3)
 
             # Обновляем прогресс
             if progress_callback and i % update_interval == 0:
-                progress_callback(int(100.0 * i / vertex_count))
+                progress_callback(int(50.0 * i / vertex_count))
 
     if progress_callback:
-        progress_callback(100)
+        progress_callback(50)
 
-    return points, colors
+    return points
 
 
-def parse_ply_ascii(file_path, with_colors=True, progress_callback=None):
+def parse_ply_ascii(file_path, progress_callback=None):
     """Парсит ASCII PLY файл."""
     vertex_count, has_colors, is_binary, header_size = parse_ply_header(file_path)
 
     if vertex_count is None:
-        return None, None
+        return None
 
     points = []
-    colors = [] if with_colors and has_colors else None
 
     with codecs.open(file_path, 'r', 'utf-8') as f:
         # Пропускаем заголовок
@@ -188,84 +180,119 @@ def parse_ply_ascii(file_path, with_colors=True, progress_callback=None):
                 revit_y = -z
                 revit_z = y
 
-                points.append(XYZ(m_to_feet(revit_x), m_to_feet(revit_y), m_to_feet(revit_z)))
-
-                if has_colors and len(parts) >= 6 and colors is not None:
-                    r, g, b = int(parts[3]), int(parts[4]), int(parts[5])
-                    colors.append((r, g, b))
+                points.append((revit_x, revit_y, revit_z))
 
             i += 1
             if progress_callback and i % update_interval == 0:
-                progress_callback(int(100.0 * i / vertex_count))
+                progress_callback(int(50.0 * i / vertex_count))
 
     if progress_callback:
-        progress_callback(100)
+        progress_callback(50)
 
-    return points, colors
+    return points
 
 
 def get_points_bounds(points):
-    """Получить границы точек (min_z, max_z, center_z)."""
+    """Получить границы точек (min_z, max_z) в метрах."""
     if not points:
-        return 0, 0, 0
+        return 0, 0
 
-    min_z = min(p.Z for p in points)
-    max_z = max(p.Z for p in points)
-    center_z = (min_z + max_z) / 2.0
+    min_z = min(p[2] for p in points)
+    max_z = max(p[2] for p in points)
 
-    return min_z, max_z, center_z
+    return min_z, max_z
 
 
-def create_point_cloud(doc, points, name, cross_size_mm=10, max_points=30000):
+def split_points_by_layers(points, layer_height_m):
     """
-    Создаёт представление точечного облака через линии.
-    Каждая точка представлена как маленький крест из линий.
+    Разбить точки на слои по высоте.
+
+    Args:
+        points: список точек [(x, y, z), ...] в метрах
+        layer_height_m: высота слоя в метрах
+
+    Returns:
+        dict {layer_index: [(x, y, z), ...]}
+    """
+    if not points:
+        return {}
+
+    min_z, max_z = get_points_bounds(points)
+
+    layers = {}
+
+    for p in points:
+        # Определяем индекс слоя
+        layer_idx = int((p[2] - min_z) / layer_height_m)
+
+        if layer_idx not in layers:
+            layers[layer_idx] = []
+        layers[layer_idx].append(p)
+
+    return layers, min_z
+
+
+def create_layer_directshape(doc, points, name, cross_size_mm=10, max_points_per_layer=10000):
+    """
+    Создаёт DirectShape для одного слоя точек.
 
     Args:
         doc: Revit document
-        points: список XYZ точек
+        points: список точек [(x, y, z), ...] в метрах
         name: имя для DirectShape
         cross_size_mm: размер креста в мм
-        max_points: максимальное количество точек для отображения
+        max_points_per_layer: максимум точек на слой
+
+    Returns:
+        (DirectShape, displayed_count)
     """
-    # Создаём DirectShape с линиями
     ds = DirectShape.CreateElement(doc, ElementId(BuiltInCategory.OST_GenericModel))
 
     curves = []
     cross_size = mm_to_feet(cross_size_mm)
 
     # Ограничиваем количество точек
-    actual_max = min(len(points), max_points)
-    step = max(1, len(points) // actual_max)
+    step = max(1, len(points) // max_points_per_layer)
+    displayed = 0
 
     for i in range(0, len(points), step):
         p = points[i]
+        # Конвертируем в футы
+        px = m_to_feet(p[0])
+        py = m_to_feet(p[1])
+        pz = m_to_feet(p[2])
+
         try:
             # Крест в трёх плоскостях
             curves.append(Line.CreateBound(
-                XYZ(p.X - cross_size, p.Y, p.Z),
-                XYZ(p.X + cross_size, p.Y, p.Z)
+                XYZ(px - cross_size, py, pz),
+                XYZ(px + cross_size, py, pz)
             ))
             curves.append(Line.CreateBound(
-                XYZ(p.X, p.Y - cross_size, p.Z),
-                XYZ(p.X, p.Y + cross_size, p.Z)
+                XYZ(px, py - cross_size, pz),
+                XYZ(px, py + cross_size, pz)
             ))
             curves.append(Line.CreateBound(
-                XYZ(p.X, p.Y, p.Z - cross_size),
-                XYZ(p.X, p.Y, p.Z + cross_size)
+                XYZ(px, py, pz - cross_size),
+                XYZ(px, py, pz + cross_size)
             ))
-        except:
+            displayed += 1
+        except Exception:
             continue
 
     if curves:
         ds.SetShape(curves)
 
-    return ds, len(curves) // 3  # Возвращаем количество отображённых точек
+    # Устанавливаем имя через параметр Mark (не критично если не получится)
+    mark_param = ds.get_Parameter(BuiltInParameter.ALL_MODEL_MARK)
+    if mark_param:
+        mark_param.Set(name)
+
+    return ds, displayed
 
 
 def get_or_create_level(doc, elevation, name):
     """Получить существующий или создать новый уровень."""
-    # Ищем существующий уровень на этой отметке (с допуском 10см)
     tolerance = mm_to_feet(100)
 
     levels = FilteredElementCollector(doc).OfClass(Level).ToElements()
@@ -273,22 +300,13 @@ def get_or_create_level(doc, elevation, name):
         if abs(level.Elevation - elevation) < tolerance:
             return level
 
-    # Создаём новый уровень
     level = Level.Create(doc, elevation)
     level.Name = name
     return level
 
 
 def create_floor_plan(doc, level, view_depth_mm=100):
-    """
-    Создать план этажа для уровня.
-
-    Args:
-        doc: Revit document
-        level: уровень для плана
-        view_depth_mm: глубина вида в мм (по умолчанию 100мм = 10см)
-    """
-    # Ищем тип вида плана
+    """Создать план этажа для уровня."""
     view_types = FilteredElementCollector(doc).OfClass(ViewFamilyType).ToElements()
     floor_plan_type = None
 
@@ -300,28 +318,23 @@ def create_floor_plan(doc, level, view_depth_mm=100):
     if floor_plan_type is None:
         return None
 
-    # Создаём план
     plan = ViewPlan.Create(doc, floor_plan_type.Id, level.Id)
 
-    # Настраиваем View Range для ограничения глубины
-    # Это скрывает всё что ниже view_depth от секущей плоскости
     view_range = plan.GetViewRange()
-
-    # Устанавливаем все плоскости относительно уровня
     depth_feet = mm_to_feet(view_depth_mm)
 
-    # Cut plane на уровне (offset = 0)
     view_range.SetOffset(PlanViewPlane.CutPlane, 0)
-    # Bottom чуть ниже cut plane
     view_range.SetOffset(PlanViewPlane.BottomClipPlane, -depth_feet)
-    # View Depth = Bottom (минимальная глубина)
     view_range.SetOffset(PlanViewPlane.ViewDepthPlane, -depth_feet)
-    # Top выше уровня
     view_range.SetOffset(PlanViewPlane.TopClipPlane, depth_feet * 2)
 
     plan.SetViewRange(view_range)
 
     return plan
+
+
+# Импорт BuiltInParameter для Mark
+from Autodesk.Revit.DB import BuiltInParameter
 
 
 class PLYLoaderForm(Form):
@@ -335,7 +348,7 @@ class PLYLoaderForm(Form):
     def setup_form(self):
         self.Text = "SLAM PLY iOS - Загрузка сканирования"
         self.Width = 450
-        self.Height = 400
+        self.Height = 380
         self.FormBorderStyle = FormBorderStyle.FixedDialog
         self.StartPosition = FormStartPosition.CenterScreen
         self.MaximizeBox = False
@@ -376,56 +389,56 @@ class PLYLoaderForm(Form):
 
         y += 50
 
-        # Группа настроек отображения
-        grp_display = GroupBox()
-        grp_display.Text = "Настройки отображения"
-        grp_display.Location = Point(15, y)
-        grp_display.Size = Size(405, 75)
+        # Группа настроек слоёв
+        grp_layers = GroupBox()
+        grp_layers.Text = "Настройки слоёв"
+        grp_layers.Location = Point(15, y)
+        grp_layers.Size = Size(405, 80)
+
+        # Высота слоя
+        lbl_layer = Label()
+        lbl_layer.Text = "Высота слоя (мм):"
+        lbl_layer.Location = Point(15, 25)
+        lbl_layer.Size = Size(110, 20)
+        grp_layers.Controls.Add(lbl_layer)
+
+        self.txt_layer_height = TextBox()
+        self.txt_layer_height.Text = "500"
+        self.txt_layer_height.Location = Point(130, 23)
+        self.txt_layer_height.Size = Size(60, 20)
+        grp_layers.Controls.Add(self.txt_layer_height)
 
         # Размер точки
         lbl_size = Label()
         lbl_size.Text = "Размер точки (мм):"
-        lbl_size.Location = Point(15, 22)
-        lbl_size.Size = Size(120, 20)
-        grp_display.Controls.Add(lbl_size)
+        lbl_size.Location = Point(210, 25)
+        lbl_size.Size = Size(115, 20)
+        grp_layers.Controls.Add(lbl_size)
 
         self.txt_point_size = TextBox()
         self.txt_point_size.Text = "10"
-        self.txt_point_size.Location = Point(140, 20)
+        self.txt_point_size.Location = Point(330, 23)
         self.txt_point_size.Size = Size(50, 20)
-        grp_display.Controls.Add(self.txt_point_size)
-
-        # Макс. количество точек
-        lbl_max = Label()
-        lbl_max.Text = "Макс. точек:"
-        lbl_max.Location = Point(210, 22)
-        lbl_max.Size = Size(80, 20)
-        grp_display.Controls.Add(lbl_max)
-
-        self.txt_max_points = TextBox()
-        self.txt_max_points.Text = "30000"
-        self.txt_max_points.Location = Point(295, 20)
-        self.txt_max_points.Size = Size(70, 20)
-        grp_display.Controls.Add(self.txt_max_points)
+        grp_layers.Controls.Add(self.txt_point_size)
 
         # Подсказка
         lbl_hint = Label()
-        lbl_hint.Text = "Точки отображаются как 3D-кресты из линий"
-        lbl_hint.Location = Point(15, 48)
+        lbl_hint.Text = "Каждый слой - отдельный DirectShape для управления видимостью"
+        lbl_hint.Location = Point(15, 52)
         lbl_hint.Size = Size(380, 20)
         lbl_hint.ForeColor = Color.Gray
-        grp_display.Controls.Add(lbl_hint)
+        grp_layers.Controls.Add(lbl_hint)
 
-        self.Controls.Add(grp_display)
+        self.Controls.Add(grp_layers)
 
-        y += 85
+        y += 90
 
         # Опция создания планов
         self.chk_create_plans = CheckBox()
-        self.chk_create_plans.Text = "Создать 3 плана (низ, середина, верх)"
+        self.chk_create_plans.Text = "Создать планы для каждого слоя"
         self.chk_create_plans.Location = Point(15, y)
         self.chk_create_plans.Size = Size(300, 25)
-        self.chk_create_plans.Checked = True
+        self.chk_create_plans.Checked = False
         self.Controls.Add(self.chk_create_plans)
 
         y += 35
@@ -488,20 +501,24 @@ class PLYLoaderForm(Form):
         self.progress.Value = value
         System.Windows.Forms.Application.DoEvents()
 
+    def set_status(self, text):
+        self.lbl_status.Text = text
+        System.Windows.Forms.Application.DoEvents()
+
     def on_ok(self, sender, args):
         if not self.ply_path or not os.path.exists(self.ply_path):
             show_warning("Внимание", "Выберите PLY файл")
             return
 
-        # Валидация числовых полей
+        # Валидация
         try:
+            layer_height = int(self.txt_layer_height.Text)
             point_size = int(self.txt_point_size.Text)
-            max_points = int(self.txt_max_points.Text)
+            if layer_height < 100 or layer_height > 5000:
+                show_warning("Внимание", "Высота слоя должна быть от 100 до 5000 мм")
+                return
             if point_size < 1 or point_size > 100:
                 show_warning("Внимание", "Размер точки должен быть от 1 до 100 мм")
-                return
-            if max_points < 1000 or max_points > 100000:
-                show_warning("Внимание", "Количество точек должно быть от 1000 до 100000")
                 return
         except ValueError:
             show_warning("Внимание", "Введите корректные числа")
@@ -509,8 +526,8 @@ class PLYLoaderForm(Form):
 
         self.result = {
             "path": self.ply_path,
+            "layer_height_mm": layer_height,
             "point_size_mm": point_size,
-            "max_points": max_points,
             "create_plans": self.chk_create_plans.Checked
         }
         self.DialogResult = DialogResult.OK
@@ -529,18 +546,20 @@ def main():
 
     opts = form.result
     ply_path = opts["path"]
+    layer_height_mm = opts["layer_height_mm"]
     point_size_mm = opts["point_size_mm"]
-    max_points = opts["max_points"]
     create_plans = opts["create_plans"]
 
-    # Собираем лог для вывода в details
+    layer_height_m = layer_height_mm / 1000.0
+
+    # Собираем лог
     log = []
 
-    # Парсим PLY файл
+    # Парсим PLY
     log.append("=== Загрузка PLY файла ===")
     log.append("Файл: {}".format(os.path.basename(ply_path)))
 
-    points, colors = parse_ply_binary(ply_path, with_colors=False)
+    points = parse_ply_binary(ply_path)
 
     if not points:
         show_error("Ошибка", "Не удалось прочитать PLY файл")
@@ -548,61 +567,73 @@ def main():
 
     log.append("Загружено точек: {:,}".format(len(points)).replace(',', ' '))
 
-    # Получаем границы
-    min_z, max_z, center_z = get_points_bounds(points)
-    log.append("Диапазон высот: {:.2f}м - {:.2f}м".format(min_z / 3.28084, max_z / 3.28084))
+    min_z, max_z = get_points_bounds(points)
+    log.append("Диапазон высот: {:.2f}м - {:.2f}м".format(min_z, max_z))
     log.append("")
 
-    # Создаём геометрию в Revit
+    # Разбиваем на слои
+    log.append("=== Разбиение на слои ===")
+    log.append("Высота слоя: {} мм".format(layer_height_mm))
+
+    layers, base_z = split_points_by_layers(points, layer_height_m)
+    log.append("Создано слоёв: {}".format(len(layers)))
+    log.append("")
+
+    # Создаём геометрию
+    scan_name = os.path.splitext(os.path.basename(ply_path))[0]
+
     with Transaction(doc, "Загрузка SLAM PLY") as t:
         t.Start()
 
-        # Создаём точечное облако
-        scan_name = os.path.splitext(os.path.basename(ply_path))[0]
+        log.append("=== Создание DirectShape ===")
+        total_displayed = 0
 
-        log.append("=== Точечное облако ===")
-        log.append("Размер точки: {} мм".format(point_size_mm))
-        log.append("Макс. точек: {:,}".format(max_points).replace(',', ' '))
+        for layer_idx in sorted(layers.keys()):
+            layer_points = layers[layer_idx]
 
-        ds, displayed_points = create_point_cloud(doc, points, scan_name, point_size_mm, max_points)
-        log.append("Отображено точек: {:,}".format(displayed_points).replace(',', ' '))
+            # Высоты слоя в метрах
+            z_from = base_z + layer_idx * layer_height_m
+            z_to = z_from + layer_height_m
+
+            layer_name = "SLAM_{:.1f}-{:.1f}m".format(z_from, z_to)
+
+            ds, displayed = create_layer_directshape(
+                doc, layer_points, layer_name, point_size_mm
+            )
+            total_displayed += displayed
+
+            log.append("+ {} ({} точек)".format(layer_name, displayed))
+
         log.append("")
+        log.append("Всего отображено: {:,} точек".format(total_displayed).replace(',', ' '))
 
         # Создаём планы если нужно
-        created_plans = []
         if create_plans:
+            log.append("")
             log.append("=== Планы ===")
 
-            # Три отметки: низ, середина, верх
-            elevations = [
-                (min_z, "SLAM_Низ_{:.1f}м".format(min_z / 3.28084)),
-                (center_z, "SLAM_Середина_{:.1f}м".format(center_z / 3.28084)),
-                (max_z - mm_to_feet(100), "SLAM_Верх_{:.1f}м".format((max_z - mm_to_feet(100)) / 3.28084))
-            ]
+            for layer_idx in sorted(layers.keys()):
+                z_from = base_z + layer_idx * layer_height_m
+                z_to = z_from + layer_height_m
+                center_z = (z_from + z_to) / 2.0
 
-            plan_errors = []
-            for elev, name in elevations:
+                level_name = "SLAM_{:.1f}-{:.1f}m".format(z_from, z_to)
+
                 try:
-                    level = get_or_create_level(doc, elev, name)
-                    plan = create_floor_plan(doc, level)
+                    level = get_or_create_level(doc, m_to_feet(center_z), level_name)
+                    plan = create_floor_plan(doc, level, layer_height_mm)
                     if plan:
-                        plan.Name = name
-                        created_plans.append(name)
-                        log.append("+ {}".format(name))
+                        plan.Name = level_name
+                        log.append("+ {}".format(level_name))
                 except Exception as e:
-                    plan_errors.append("{}: {}".format(name, str(e)))
-                    log.append("- {} (ошибка)".format(name))
+                    log.append("- {} (ошибка: {})".format(level_name, str(e)))
                     continue
-
-            if plan_errors:
-                log.append("")
-                log.append("Ошибки: " + "; ".join(plan_errors))
 
         t.Commit()
 
     show_success(
         "Загрузка завершена",
-        "Отображено {:,} из {:,} точек".format(displayed_points, len(points)).replace(',', ' '),
+        "Создано {} слоёв, {:,} точек".format(len(layers), total_displayed).replace(',', ' '),
         details="\n".join(log)
     )
 

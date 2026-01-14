@@ -24,6 +24,7 @@ CPSK Notification Module
 import clr
 import ctypes
 
+clr.AddReference('System')
 clr.AddReference('System.Windows.Forms')
 clr.AddReference('System.Drawing')
 
@@ -34,7 +35,7 @@ from System.Windows.Forms import (
     ScrollBars, AnchorStyles, Clipboard, DialogResult
 )
 from System.Drawing import Point, Size, Font, FontStyle, Rectangle, Color
-import System.Diagnostics as Diagnostics
+from System.Diagnostics import Process, ProcessStartInfo
 
 
 def get_revit_window_bounds():
@@ -196,10 +197,13 @@ class NotificationForm(Form):
         self.txt_details.Location = Point(15, y)
         self.txt_details.Size = Size(360, 120)
         self.txt_details.Multiline = True
-        self.txt_details.ScrollBars = ScrollBars.Both
+        self.txt_details.WordWrap = True
+        self.txt_details.ScrollBars = ScrollBars.Vertical
         self.txt_details.ReadOnly = True
-        self.txt_details.Font = Font("Consolas", 9)
-        self.txt_details.Text = self.details_text
+        self.txt_details.Font = Font("Segoe UI", 9)
+        # Нормализуем переносы строк для Windows
+        details_normalized = self.details_text.replace('\r\n', '\n').replace('\r', '\n').replace('\n', '\r\n')
+        self.txt_details.Text = details_normalized
         self.txt_details.Visible = False
         self.Controls.Add(self.txt_details)
 
@@ -270,7 +274,9 @@ class NotificationForm(Form):
     def on_link_clicked(self, sender, args):
         """Открыть ссылку в браузере."""
         try:
-            Diagnostics.Process.Start(self.link_url)
+            psi = ProcessStartInfo(self.link_url)
+            psi.UseShellExecute = True
+            Process.Start(psi)
         except Exception:
             # Если не удалось открыть - копируем в буфер
             try:
