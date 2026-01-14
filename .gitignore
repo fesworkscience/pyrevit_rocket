@@ -5,6 +5,7 @@ __pycache__/
 
 # Claude Code
 .claude/
+tmpclaude-*
 
 # OS
 .DS_Store

@@ -15,8 +15,8 @@ PROJECT_DIR = os.path.dirname(EXTENSION_DIR)  # Корень проекта (pyr
 SETTINGS_FILE = os.path.join(PROJECT_DIR, "cpsk_settings.yaml")
 LIB_DIR = _THIS_DIR
 
-# Путь к venv вне OneDrive (OneDrive блокирует os.path.exists для файлов в Documents)
-VENV_BASE_DIR = r"C:\cpsk_envs"
+# Путь к venv в AppData\Local (не синхронизируется OneDrive, доступен без админ-прав)
+VENV_BASE_DIR = os.path.join(os.environ.get("LOCALAPPDATA", r"C:\Users\{}".format(os.environ.get("USERNAME", "User")) + r"\AppData\Local"), "cpsk_envs")
 VENV_NAME = "pyrevit_rocket"
 
 # Значения по умолчанию

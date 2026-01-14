@@ -97,8 +97,9 @@ if (Test-Path $markerFile) {
     Write-Log "pyRevit was not installed by CPSK - keeping it"
 }
 
-# Remove Python virtual environment
-$venvPath = "C:\cpsk_envs\pyrevit_rocket"
+# Remove Python virtual environment from AppData\Local
+$envsPath = "$env:LOCALAPPDATA\cpsk_envs"
+$venvPath = "$envsPath\pyrevit_rocket"
 if (Test-Path $venvPath) {
     Write-Log "Removing Python virtual environment: $venvPath"
     Remove-Item $venvPath -Recurse -Force -ErrorAction SilentlyContinue
@@ -106,12 +107,27 @@ if (Test-Path $venvPath) {
 }
 
 # Remove cpsk_envs folder if empty
-$envsPath = "C:\cpsk_envs"
 if (Test-Path $envsPath) {
     $items = Get-ChildItem $envsPath -ErrorAction SilentlyContinue
     if ($items.Count -eq 0) {
         Remove-Item $envsPath -Force -ErrorAction SilentlyContinue
         Write-Log "Removed empty cpsk_envs folder"
+    }
+}
+
+# Also check old location (C:\cpsk_envs) for cleanup
+$oldEnvsPath = "C:\cpsk_envs"
+$oldVenvPath = "$oldEnvsPath\pyrevit_rocket"
+if (Test-Path $oldVenvPath) {
+    Write-Log "Removing old Python virtual environment: $oldVenvPath"
+    Remove-Item $oldVenvPath -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Log "Old virtual environment removed"
+}
+if (Test-Path $oldEnvsPath) {
+    $items = Get-ChildItem $oldEnvsPath -ErrorAction SilentlyContinue
+    if ($items.Count -eq 0) {
+        Remove-Item $oldEnvsPath -Force -ErrorAction SilentlyContinue
+        Write-Log "Removed old empty cpsk_envs folder"
     }
 }
 

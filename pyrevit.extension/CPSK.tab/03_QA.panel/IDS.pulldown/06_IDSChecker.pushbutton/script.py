@@ -692,7 +692,7 @@ class IDSCheckerForm(Form):
     _TemporaryViewMode = TemporaryViewMode
     _ProgressBarStyle = ProgressBarStyle
     _System = System
-    _PYTHON_PATHS = PYTHON_PATHS
+    _VENV_PYTHON = VENV_PYTHON
     _IDS_CHECKER_SCRIPT = IDS_CHECKER_SCRIPT
     _get_param_value = staticmethod(get_param_value)
     _find_python = staticmethod(find_python)
@@ -1562,16 +1562,11 @@ class IDSCheckerForm(Form):
         if not self.ids_path or not self.ifc_path:
             return
 
-        # Найти Python (inline чтобы избежать проблем с областью видимости)
-        python_path = None
-        for p in self._PYTHON_PATHS:
-            if self._os.path.exists(p):
-                python_path = p
-                break
-
-        if not python_path:
-            self._show_error("Ошибка", "Python не найден!",
-                             details="Установите Python 3.9+ и библиотеки:\npip install ifcopenshell ifctester")
+        # Используем Python из venv окружения
+        python_path = self._VENV_PYTHON
+        if not python_path or not self._os.path.exists(python_path):
+            self._show_error("Ошибка", "Python окружение не найдено!",
+                             details="Перейдите в Settings → Окружение и установите окружение.")
             return
 
         # Проверяем существование IFC файла

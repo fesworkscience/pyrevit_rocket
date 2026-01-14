@@ -1,0 +1,7 @@
+{
+    "extraPaths": [
+        "pyrevit.extension/lib"
+    ],
+    "pythonVersion": "3.12",
+    "reportMissingImports": "warning"
+}

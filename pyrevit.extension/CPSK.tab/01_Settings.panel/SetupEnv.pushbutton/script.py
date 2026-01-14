@@ -3,7 +3,7 @@
 SetupEnv - Проверка и установка Python окружения.
 Показывает статус, пути и позволяет установить/переустановить окружение.
 
-Venv создаётся в C:\cpsk_envs\pyrevit_rocket (вне OneDrive).
+Venv создаётся в %LOCALAPPDATA%\cpsk_envs\pyrevit_rocket.
 """
 
 __title__ = "Окружение"
