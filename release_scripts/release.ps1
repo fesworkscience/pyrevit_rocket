@@ -1,5 +1,6 @@
 param(
-    [string]$BumpType = "patch"
+    [string]$BumpType = "patch",
+    [switch]$Staging
 )
 
 $ErrorActionPreference = "Stop"
@@ -21,24 +22,48 @@ $tags = git tag -l "v*.*.*" | Sort-Object {
 $lastTag = $tags | Select-Object -First 1
 
 if ($lastTag) {
-    $version = $lastTag -replace '^v', ''
+    $version = $lastTag -replace '^v', '' -replace '-staging$', ''
     $parts = $version.Split('.')
     $major = [int]$parts[0]
     $minor = [int]$parts[1]
     $patch = [int]$parts[2]
 
-    switch ($BumpType) {
-        "major" { $major++; $minor = 0; $patch = 0 }
-        "minor" { $minor++; $patch = 0 }
-        "patch" { $patch++ }
+    if ($Staging) {
+        # Staging: use current version with -staging suffix
+        $newVersion = "$major.$minor.$patch-staging"
+    } else {
+        # Production: bump version
+        switch ($BumpType) {
+            "major" { $major++; $minor = 0; $patch = 0 }
+            "minor" { $minor++; $patch = 0 }
+            "patch" { $patch++ }
+        }
+        $newVersion = "$major.$minor.$patch"
     }
-    $newVersion = "$major.$minor.$patch"
 } else {
-    $newVersion = "1.0.0"
+    if ($Staging) {
+        $newVersion = "1.0.0-staging"
+    } else {
+        $newVersion = "1.0.0"
+    }
 }
 
 Write-Host "Last version: $lastTag" -ForegroundColor Cyan
 Write-Host "New version:  v$newVersion" -ForegroundColor Green
+
+# Get current branch
+$currentBranch = git rev-parse --abbrev-ref HEAD
+
+if ($Staging) {
+    Write-Host "Branch: $currentBranch (staging from current branch)" -ForegroundColor Yellow
+} else {
+    if ($currentBranch -ne "master") {
+        Write-Host "ERROR: Production release must be from master branch!" -ForegroundColor Red
+        Write-Host "Current branch: $currentBranch" -ForegroundColor Yellow
+        Write-Host "Switch to master or use -Staging for test builds" -ForegroundColor Yellow
+        exit 1
+    }
+}
 
 # Get repo root directory
 $repoRoot = git rev-parse --show-toplevel
@@ -51,14 +76,21 @@ git commit -m "Release v$newVersion"
 git tag "v$newVersion"
 
 Write-Host "Pushing to origin..." -ForegroundColor Cyan
-git push origin master
+git push origin $currentBranch
 git push origin "v$newVersion"
 
-Write-Host "Pushing to github..." -ForegroundColor Cyan
-git push github master
+Write-Host "Pushing tag to github..." -ForegroundColor Cyan
+if (-not $Staging) {
+    git push github master
+}
 git push github "v$newVersion"
 
 Write-Host ""
-Write-Host "Released v$newVersion" -ForegroundColor Green
+if ($Staging) {
+    Write-Host "Staging release v$newVersion" -ForegroundColor Yellow
+    Write-Host "(Build without server upload)" -ForegroundColor Yellow
+} else {
+    Write-Host "Released v$newVersion" -ForegroundColor Green
+}
 Write-Host ""
 Write-Host "Build status: https://github.com/fesworkscience/pyrevit_rocket/actions" -ForegroundColor Cyan

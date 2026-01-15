@@ -15,16 +15,39 @@ powershell -ExecutionPolicy Bypass -File "release_scripts\release.ps1" -BumpType
 
 # Major версия (1.0.35 -> 2.0.0)
 powershell -ExecutionPolicy Bypass -File "release_scripts\release.ps1" -BumpType major
+
+# Staging версия (1.0.35 -> 1.0.35-staging) - БЕЗ публикации на сервер
+powershell -ExecutionPolicy Bypass -File "release_scripts\release.ps1" -Staging
 ```
+
+### Production vs Staging
+
+| Тип | Ветка | Версия | GitHub Release | Сервер rocket-tools.ru |
+|-----|-------|--------|----------------|------------------------|
+| Production | только `master` | `v1.0.36` | Release | Загружается |
+| Staging | любая (develop, feature/*) | `v1.0.36-staging` | Pre-release | НЕ загружается |
+
+**Staging используется для:**
+- Тестирования билда из ветки `develop` перед мержем в master
+- Проверки installer на реальных пользователях
+- Отладки без влияния на production
+
+**Что делает staging:**
+- Пушит текущую ветку в origin
+- Пушит только тег в github (не ветку) → запускает GitHub Actions
+- GitHub Actions создаёт pre-release с exe-файлом
+- НЕ загружает на rocket-tools.ru
+
+**Важно:** Production релиз можно запустить только из ветки `master`!
 
 Скрипт автоматически:
 1. Проверяет, что нет незакоммиченных изменений
 2. Определяет последнюю версию из тегов
-3. Увеличивает версию
+3. Увеличивает версию (или добавляет -staging для staging)
 4. Обновляет `version.yaml`
-5. Создаёт коммит "Release vX.X.X"
+5. Создаёт коммит "Release vX.X.X" или "Release vX.X.X-staging"
 6. Создаёт тег
-7. Пушит в origin и github
+7. Пушит в origin (и github для production)
 
 **Перед релизом обязательно закоммить все изменения!**
 
