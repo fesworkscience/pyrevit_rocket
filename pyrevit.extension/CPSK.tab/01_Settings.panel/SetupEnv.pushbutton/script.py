@@ -64,7 +64,7 @@ from cpsk_config import (
     get_setting, set_setting,
     get_venv_path, get_requirements_path, get_venv_python, get_venv_pip,
     find_system_python, get_python_version, check_environment,
-    VENV_BASE_DIR, reset_environment_cache
+    VENV_BASE_DIR, reset_environment_cache, switch_to_alternative_venv_dir
 )
 
 output = script.get_output()
@@ -515,7 +515,7 @@ class SetupEnvForm(Form):
                 log_lines.append("Создана успешно")
                 log_lines.append("")
 
-            # Шаг 1: Удаление старого venv
+            # Шаг 1: Удаление старого venv (с переключением на альтернативную директорию при ошибке)
             self.lbl_progress.Text = "Шаг 1/3: Удаление старого venv..."
             System.Windows.Forms.Application.DoEvents()
 
@@ -524,8 +524,42 @@ class SetupEnvForm(Form):
 
             if os.path.exists(venv_path):
                 log_lines.append("Папка существует, удаляем...")
-                shutil.rmtree(venv_path)
-                log_lines.append("Папка удалена")
+                try:
+                    shutil.rmtree(venv_path)
+                    log_lines.append("Папка удалена")
+                except (IOError, OSError, WindowsError) as e:
+                    log_lines.append("Ошибка удаления: {}".format(str(e)))
+                    log_lines.append("Пробуем альтернативную директорию...")
+
+                    # Пробуем переключиться на альтернативную директорию
+                    current_base = os.path.dirname(venv_path)
+                    new_base = switch_to_alternative_venv_dir(current_base)
+
+                    if new_base:
+                        log_lines.append("Переключение на: {}".format(new_base))
+                        # Обновляем пути
+                        venv_path = get_venv_path()
+                        pip_path = os.path.join(venv_path, "Scripts", "pip.exe")
+                        venv_python_exe = os.path.join(venv_path, "Scripts", "python.exe")
+
+                        # Обновляем отображение
+                        self.lbl_venv_path.Text = "venv: {}".format(venv_path)
+
+                        log_lines.append("Новый путь venv: {}".format(venv_path))
+
+                        # Удаляем старый venv в новой директории если есть
+                        if os.path.exists(venv_path):
+                            log_lines.append("Удаляем старый venv в новой директории...")
+                            shutil.rmtree(venv_path)
+                            log_lines.append("Удалено")
+                    else:
+                        log_lines.append("Альтернативные директории недоступны")
+                        log_path = self.save_log(log_lines, success=False)
+                        raise Exception(
+                            "Нет доступа к директории venv и альтернативы недоступны.\n"
+                            "Закройте все программы, использующие папку, или перезагрузите компьютер.\n"
+                            "Лог: {}".format(log_path)
+                        )
             else:
                 log_lines.append("Папка не существует, пропускаем")
 
@@ -590,6 +624,7 @@ class SetupEnvForm(Form):
             self.run_check()
 
             set_setting("environment.installed", True)
+            set_setting("environment.venv_base_dir", os.path.dirname(venv_path))
             reset_environment_cache()  # Сбросить кэш для новых проверок
 
             # Сохраняем успешный лог

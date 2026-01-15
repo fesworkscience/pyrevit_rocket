@@ -12,8 +12,8 @@ on:
         default: ''
 
 env:
-  PYREVIT_VERSION: "4.8.16.24121"
-  PYREVIT_URL: "https://github.com/pyrevitlabs/pyRevit/releases/download/v4.8.16.24121/pyRevit_4.8.16.24121_signed.exe"
+  PYREVIT_VERSION: "5.3.1.25308"
+  PYREVIT_URL: "https://github.com/pyrevitlabs/pyRevit/releases/download/v5.3.1.25308%2B1659/pyRevit_5.3.1.25308_signed.exe"
 
 permissions:
   contents: write

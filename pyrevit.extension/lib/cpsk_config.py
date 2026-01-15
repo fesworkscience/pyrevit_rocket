@@ -24,8 +24,23 @@ _CANDIDATE_DIRS = [r"C:\cpsk_envs", r"D:\cpsk_envs"]
 def _find_writable_base_dir():
     """
     Найти директорию для venv с возможностью записи.
-    Проверяет через создание/удаление временного файла.
+    Сначала проверяет сохранённый путь в настройках, затем ищет доступную директорию.
     """
+    # Сначала проверяем сохранённый путь в настройках
+    saved_base_dir = _get_saved_venv_base_dir()
+    if saved_base_dir:
+        # Проверяем что сохранённая директория существует и содержит venv
+        venv_path = os.path.join(saved_base_dir, VENV_NAME)
+        if os.path.exists(venv_path) and os.path.exists(os.path.join(venv_path, "Scripts", "python.exe")):
+            return saved_base_dir
+
+    # Иначе ищем директорию с существующим venv
+    for base_dir in _CANDIDATE_DIRS:
+        venv_path = os.path.join(base_dir, VENV_NAME)
+        if os.path.exists(venv_path) and os.path.exists(os.path.join(venv_path, "Scripts", "python.exe")):
+            return base_dir
+
+    # Если venv нигде не найден, ищем доступную для записи директорию
     for base_dir in _CANDIDATE_DIRS:
         try:
             # Создаём папку если не существует
@@ -50,8 +65,110 @@ def _find_writable_base_dir():
     return _CANDIDATE_DIRS[0]
 
 
+def _get_saved_venv_base_dir():
+    """Получить сохранённый путь к базовой директории venv из настроек."""
+    try:
+        if os.path.exists(SETTINGS_FILE):
+            with codecs.open(SETTINGS_FILE, 'r', 'utf-8') as f:
+                content = f.read()
+            # Простой поиск venv_base_dir в YAML
+            for line in content.split('\n'):
+                if 'venv_base_dir:' in line:
+                    # Извлекаем значение после двоеточия
+                    value = line.split(':', 1)[1].strip().strip('"').strip("'")
+                    if value and os.path.exists(value):
+                        return value
+    except Exception:
+        pass
+    return None
+
+
 # Определяем базовую директорию при импорте модуля
 VENV_BASE_DIR = _find_writable_base_dir()
+
+
+def get_alternative_venv_dirs():
+    """Получить список альтернативных директорий для venv (кроме текущей)."""
+    return [d for d in _CANDIDATE_DIRS if d != VENV_BASE_DIR]
+
+
+def switch_to_alternative_venv_dir(current_dir):
+    """
+    Переключиться на альтернативную директорию для venv.
+    Используется при ошибке доступа к текущей директории.
+    Сохраняет выбранную директорию в настройки.
+
+    :param current_dir: Текущая директория, которая недоступна
+    :return: Новая директория или None если альтернатив нет
+    """
+    global VENV_BASE_DIR
+
+    for base_dir in _CANDIDATE_DIRS:
+        if base_dir == current_dir:
+            continue
+
+        try:
+            # Создаём папку если не существует
+            if not os.path.exists(base_dir):
+                os.makedirs(base_dir)
+
+            # Пробуем создать временный файл
+            test_file = os.path.join(base_dir, "_write_test.tmp")
+            with codecs.open(test_file, 'w', 'utf-8') as f:
+                f.write("test")
+
+            # Удаляем тестовый файл
+            os.remove(test_file)
+
+            # Успех - переключаемся на эту директорию
+            VENV_BASE_DIR = base_dir
+
+            # Сохраняем в настройки (вызываем после определения функции set_setting)
+            _save_venv_base_dir(base_dir)
+
+            return base_dir
+        except (IOError, OSError):
+            continue
+
+    return None
+
+
+def _save_venv_base_dir(base_dir):
+    """Сохранить базовую директорию venv в настройки."""
+    try:
+        # Используем set_setting после того как она будет определена
+        # Временно делаем прямую запись в файл
+        if os.path.exists(SETTINGS_FILE):
+            with codecs.open(SETTINGS_FILE, 'r', 'utf-8') as f:
+                content = f.read()
+
+            # Проверяем есть ли уже venv_base_dir в environment секции
+            if 'venv_base_dir:' in content:
+                # Заменяем существующее значение
+                lines = content.split('\n')
+                new_lines = []
+                for line in lines:
+                    if 'venv_base_dir:' in line:
+                        indent = len(line) - len(line.lstrip())
+                        new_lines.append(' ' * indent + 'venv_base_dir: "{}"'.format(base_dir))
+                    else:
+                        new_lines.append(line)
+                content = '\n'.join(new_lines)
+            else:
+                # Добавляем в секцию environment
+                lines = content.split('\n')
+                new_lines = []
+                for i, line in enumerate(lines):
+                    new_lines.append(line)
+                    if line.strip() == 'environment:':
+                        # Добавляем после environment:
+                        new_lines.append('  venv_base_dir: "{}"'.format(base_dir))
+                content = '\n'.join(new_lines)
+
+            with codecs.open(SETTINGS_FILE, 'w', 'utf-8') as f:
+                f.write(content)
+    except Exception:
+        pass
 
 # Значения по умолчанию
 # Примечание: venv_path и requirements_path фиксированы в коде (get_venv_path, get_requirements_path)
