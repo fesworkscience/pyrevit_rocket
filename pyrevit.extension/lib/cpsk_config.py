@@ -15,43 +15,118 @@ PROJECT_DIR = os.path.dirname(EXTENSION_DIR)  # Корень проекта (pyr
 SETTINGS_FILE = os.path.join(PROJECT_DIR, "cpsk_settings.yaml")
 LIB_DIR = _THIS_DIR
 
-# Путь к venv - фиксированные диски (вне OneDrive)
-# Приоритет: C:\cpsk_envs, D:\cpsk_envs
+# Путь к venv - по умолчанию C:\cpsk_envs
+# Пользователь может изменить путь в настройках окружения
 VENV_NAME = "pyrevit_rocket"
-_CANDIDATE_DIRS = [r"C:\cpsk_envs", r"D:\cpsk_envs"]
+DEFAULT_VENV_BASE_DIR = r"C:\cpsk_envs"
 
 
-def _find_writable_base_dir():
+def _get_saved_venv_base_dir():
+    """Получить сохранённый путь к базовой директории venv из настроек."""
+    try:
+        if os.path.exists(SETTINGS_FILE):
+            with codecs.open(SETTINGS_FILE, 'r', 'utf-8') as f:
+                content = f.read()
+            # Простой поиск venv_base_dir в YAML
+            for line in content.split('\n'):
+                if 'venv_base_dir:' in line:
+                    # Извлекаем значение после двоеточия
+                    value = line.split(':', 1)[1].strip().strip('"').strip("'")
+                    if value:
+                        return value
+    except Exception:
+        pass
+    return None
+
+
+def _get_venv_base_dir():
     """
-    Найти директорию для venv с возможностью записи.
-    Проверяет через создание/удаление временного файла.
+    Получить базовую директорию для venv.
+    Приоритет: сохранённый путь в настройках -> путь по умолчанию.
     """
-    for base_dir in _CANDIDATE_DIRS:
-        try:
-            # Создаём папку если не существует
-            if not os.path.exists(base_dir):
-                os.makedirs(base_dir)
-
-            # Пробуем создать временный файл
-            test_file = os.path.join(base_dir, "_write_test.tmp")
-            with codecs.open(test_file, 'w', 'utf-8') as f:
-                f.write("test")
-
-            # Удаляем тестовый файл
-            os.remove(test_file)
-
-            # Успех - этот диск доступен для записи
-            return base_dir
-        except (IOError, OSError, WindowsError):
-            # Нет прав или диск недоступен - пробуем следующий
-            continue
-
-    # Fallback на первый вариант (покажет ошибку при установке)
-    return _CANDIDATE_DIRS[0]
+    saved = _get_saved_venv_base_dir()
+    if saved:
+        return saved
+    return DEFAULT_VENV_BASE_DIR
 
 
 # Определяем базовую директорию при импорте модуля
-VENV_BASE_DIR = _find_writable_base_dir()
+VENV_BASE_DIR = _get_venv_base_dir()
+
+
+def set_venv_base_dir(base_dir):
+    """
+    Установить базовую директорию для venv.
+    Сохраняет в настройки и обновляет глобальную переменную.
+
+    :param base_dir: Путь к базовой директории
+    :return: True если успешно, False если ошибка
+    """
+    global VENV_BASE_DIR
+
+    try:
+        # Сохраняем в настройки
+        if os.path.exists(SETTINGS_FILE):
+            with codecs.open(SETTINGS_FILE, 'r', 'utf-8') as f:
+                content = f.read()
+
+            # Проверяем есть ли уже venv_base_dir в environment секции
+            if 'venv_base_dir:' in content:
+                # Заменяем существующее значение
+                lines = content.split('\n')
+                new_lines = []
+                for line in lines:
+                    if 'venv_base_dir:' in line:
+                        indent = len(line) - len(line.lstrip())
+                        new_lines.append(' ' * indent + 'venv_base_dir: "{}"'.format(base_dir))
+                    else:
+                        new_lines.append(line)
+                content = '\n'.join(new_lines)
+            else:
+                # Добавляем в секцию environment
+                lines = content.split('\n')
+                new_lines = []
+                for i, line in enumerate(lines):
+                    new_lines.append(line)
+                    if line.strip() == 'environment:':
+                        # Добавляем после environment:
+                        new_lines.append('  venv_base_dir: "{}"'.format(base_dir))
+                content = '\n'.join(new_lines)
+
+            with codecs.open(SETTINGS_FILE, 'w', 'utf-8') as f:
+                f.write(content)
+
+        # Обновляем глобальную переменную
+        VENV_BASE_DIR = base_dir
+        return True
+
+    except Exception:
+        return False
+
+
+def check_dir_writable(dir_path):
+    """
+    Проверить возможность записи в директорию.
+
+    :param dir_path: Путь к директории
+    :return: True если можно писать, False если нет
+    """
+    try:
+        # Создаём папку если не существует
+        if not os.path.exists(dir_path):
+            os.makedirs(dir_path)
+
+        # Пробуем создать временный файл
+        test_file = os.path.join(dir_path, "_write_test.tmp")
+        with codecs.open(test_file, 'w', 'utf-8') as f:
+            f.write("test")
+
+        # Удаляем тестовый файл
+        os.remove(test_file)
+        return True
+
+    except (IOError, OSError, WindowsError):
+        return False
 
 # Значения по умолчанию
 # Примечание: venv_path и requirements_path фиксированы в коде (get_venv_path, get_requirements_path)
