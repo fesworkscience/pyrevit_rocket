@@ -62,9 +62,10 @@ jobs:
           New-Item -ItemType Directory -Path "build" -Force
           Copy-Item -Path "pyrevit.extension" -Destination "build\CPSK.extension" -Recurse
           Copy-Item -Path "installer\scripts\*" -Destination "build\" -Force
-          # Copy requirements.txt and version.yaml to root (not extension!)
+          # Copy requirements.txt, version.yaml and config.py to root (not extension!)
           Copy-Item -Path "requirements.txt" -Destination "build\" -Force
           Copy-Item -Path "version.yaml" -Destination "build\" -Force
+          Copy-Item -Path "config.py" -Destination "build\" -Force
 
       - name: Remove dev tools from build
         shell: pwsh
@@ -81,6 +82,15 @@ jobs:
           }
           Write-Host "Files in lib:"
           Get-ChildItem $libDir | ForEach-Object { Write-Host "  $($_.Name)" }
+
+      - name: Set DEBUG=False in config.py
+        shell: pwsh
+        run: |
+          $configFile = "build\config.py"
+          $content = Get-Content $configFile -Raw -Encoding UTF8
+          $content = $content -replace 'DEBUG\s*=\s*True', 'DEBUG = False'
+          [System.IO.File]::WriteAllText($configFile, $content, [System.Text.UTF8Encoding]::new($false))
+          Write-Host "Set DEBUG = False in config.py"
 
       - name: Setup Python
         uses: actions/setup-python@v5
