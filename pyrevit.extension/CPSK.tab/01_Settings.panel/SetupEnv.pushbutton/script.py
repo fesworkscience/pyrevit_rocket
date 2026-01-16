@@ -3,7 +3,7 @@
 SetupEnv - Проверка и установка Python окружения.
 Показывает статус, пути и позволяет установить/переустановить окружение.
 
-Venv создаётся в C:\cpsk_envs\pyrevit_rocket (или D:\ если C: недоступен).
+Пользователь может выбрать папку для venv. По умолчанию: C:\\cpsk_envs\\pyrevit_rocket
 """
 
 __title__ = "Окружение"
@@ -22,7 +22,7 @@ import System
 from System.Windows.Forms import (
     Form, Label, TextBox, Button, ProgressBar,
     FormStartPosition, FormBorderStyle,
-    GroupBox, ProgressBarStyle
+    GroupBox, ProgressBarStyle, FolderBrowserDialog, DialogResult
 )
 from System.Drawing import Point, Size, Color, Font, FontStyle
 
@@ -64,7 +64,8 @@ from cpsk_config import (
     get_setting, set_setting,
     get_venv_path, get_requirements_path, get_venv_python, get_venv_pip,
     find_system_python, get_python_version, check_environment,
-    VENV_BASE_DIR, reset_environment_cache
+    VENV_BASE_DIR, VENV_NAME, DEFAULT_VENV_BASE_DIR,
+    reset_environment_cache, set_venv_base_dir, check_dir_writable
 )
 
 output = script.get_output()
@@ -80,7 +81,7 @@ class SetupEnvForm(Form):
         """Настройка формы."""
         self.Text = "CPSK - Окружение"
         self.Width = 520
-        self.Height = 530
+        self.Height = 560
         self.StartPosition = FormStartPosition.CenterScreen
         self.FormBorderStyle = FormBorderStyle.FixedDialog
         self.MaximizeBox = False
@@ -177,27 +178,36 @@ class SetupEnvForm(Form):
 
         y += 170
 
-        # === Группа: Пути ===
-        grp_paths = GroupBox()
-        grp_paths.Text = "Пути"
-        grp_paths.Location = Point(15, y)
-        grp_paths.Size = Size(475, 70)
+        # === Группа: Папка для venv ===
+        grp_venv_dir = GroupBox()
+        grp_venv_dir.Text = "Папка для виртуального окружения"
+        grp_venv_dir.Location = Point(15, y)
+        grp_venv_dir.Size = Size(475, 55)
 
+        self.txt_venv_dir = TextBox()
+        self.txt_venv_dir.Location = Point(15, 22)
+        self.txt_venv_dir.Width = 365
+        grp_venv_dir.Controls.Add(self.txt_venv_dir)
+
+        btn_browse_venv = Button()
+        btn_browse_venv.Text = "Обзор..."
+        btn_browse_venv.Location = Point(390, 20)
+        btn_browse_venv.Width = 70
+        btn_browse_venv.Click += self.on_browse_venv_dir
+        grp_venv_dir.Controls.Add(btn_browse_venv)
+
+        self.Controls.Add(grp_venv_dir)
+
+        y += 70
+
+        # === Пути (информация) ===
         self.lbl_venv_path = Label()
-        self.lbl_venv_path.Location = Point(15, 20)
-        self.lbl_venv_path.Size = Size(445, 18)
+        self.lbl_venv_path.Location = Point(20, y)
+        self.lbl_venv_path.Size = Size(470, 18)
         self.lbl_venv_path.ForeColor = Color.FromArgb(80, 80, 80)
-        grp_paths.Controls.Add(self.lbl_venv_path)
+        self.Controls.Add(self.lbl_venv_path)
 
-        self.lbl_req_path = Label()
-        self.lbl_req_path.Location = Point(15, 42)
-        self.lbl_req_path.Size = Size(445, 18)
-        self.lbl_req_path.ForeColor = Color.FromArgb(80, 80, 80)
-        grp_paths.Controls.Add(self.lbl_req_path)
-
-        self.Controls.Add(grp_paths)
-
-        y += 85
+        y += 20
 
         # === Группа: Системный Python ===
         grp_python = GroupBox()
@@ -246,7 +256,7 @@ class SetupEnvForm(Form):
         self.Controls.Add(self.btn_install)
 
         btn_refresh = Button()
-        btn_refresh.Text = "Обновить"
+        btn_refresh.Text = "Проверить"
         btn_refresh.Location = Point(180, y)
         btn_refresh.Size = Size(80, 32)
         btn_refresh.Click += self.on_refresh
@@ -271,18 +281,55 @@ class SetupEnvForm(Form):
 
     def load_data(self):
         """Загрузить данные."""
+        # Папка для venv
+        self.txt_venv_dir.Text = VENV_BASE_DIR
+
         # Системный Python
         python_path = get_setting("environment.python_path", "")
         if not python_path:
             python_path = find_system_python() or ""
         self.txt_python.Text = python_path
 
-        # Пути
-        self.lbl_venv_path.Text = "venv: {}".format(get_venv_path())
-        self.lbl_req_path.Text = "req: {}".format(get_requirements_path())
+        # Пути (информация)
+        self.update_paths_info()
 
         # Проверка
         self.run_check()
+
+    def update_paths_info(self):
+        """Обновить информацию о путях."""
+        venv_dir = self.txt_venv_dir.Text.strip()
+        venv_full_path = os.path.join(venv_dir, VENV_NAME)
+        self.lbl_venv_path.Text = "venv: {}".format(venv_full_path)
+
+    def on_browse_venv_dir(self, sender, args):
+        """Выбор папки для venv."""
+        dialog = FolderBrowserDialog()
+        dialog.Description = "Выберите папку для виртуального окружения"
+        dialog.SelectedPath = self.txt_venv_dir.Text
+
+        if dialog.ShowDialog() == DialogResult.OK:
+            selected_dir = dialog.SelectedPath
+
+            # Проверяем права на запись
+            if not check_dir_writable(selected_dir):
+                show_error(
+                    "Ошибка",
+                    "Нет прав на запись в выбранную папку",
+                    details="Путь: {}\n\nВыберите другую папку с правами на запись.".format(selected_dir)
+                )
+                return
+
+            self.txt_venv_dir.Text = selected_dir
+            self.update_paths_info()
+
+            # Сохраняем путь и проверяем окружение в новой папке
+            set_venv_base_dir(selected_dir)
+            reset_environment_cache()
+            self.run_check()
+
+            self.lbl_progress.Text = "Путь изменён, проверка выполнена"
+            self.lbl_progress.ForeColor = Color.Blue
 
     def run_check(self):
         """Выполнить проверку окружения."""
@@ -473,14 +520,17 @@ class SetupEnvForm(Form):
     def on_install(self, sender, args):
         """Установить окружение."""
         python_path = self.txt_python.Text.strip()
-        venv_path = get_venv_path()
+        venv_base_dir = self.txt_venv_dir.Text.strip()
         req_path = get_requirements_path()
+
+        # Путь к venv = base_dir + VENV_NAME
+        venv_path = os.path.join(venv_base_dir, VENV_NAME)
 
         log_lines = []
         log_lines.append("Python: {}".format(python_path))
+        log_lines.append("Venv base dir: {}".format(venv_base_dir))
         log_lines.append("Venv: {}".format(venv_path))
         log_lines.append("Requirements: {}".format(req_path))
-        log_lines.append("Base dir: {}".format(VENV_BASE_DIR))
         log_lines.append("")
 
         if not python_path or not os.path.exists(python_path):
@@ -488,9 +538,22 @@ class SetupEnvForm(Form):
                        details="Указанный путь: {}".format(python_path))
             return
 
+        if not venv_base_dir:
+            show_error("Ошибка", "Укажите папку для виртуального окружения!")
+            return
+
         if not os.path.exists(req_path):
             show_error("Ошибка", "Файл requirements.txt не найден",
                        details="Путь: {}".format(req_path))
+            return
+
+        # Проверяем права на запись в выбранную папку
+        if not check_dir_writable(venv_base_dir):
+            show_error(
+                "Ошибка",
+                "Нет прав на запись в выбранную папку",
+                details="Путь: {}\n\nВыберите другую папку с правами на запись.".format(venv_base_dir)
+            )
             return
 
         # Сохраняем путь к Python
@@ -508,10 +571,10 @@ class SetupEnvForm(Form):
             # Шаг 0: Создание базовой директории
             self.start_progress("Подготовка...")
 
-            if not os.path.exists(VENV_BASE_DIR):
+            if not os.path.exists(venv_base_dir):
                 log_lines.append(">>> ШАГ 0: СОЗДАНИЕ БАЗОВОЙ ДИРЕКТОРИИ")
-                log_lines.append("Путь: {}".format(VENV_BASE_DIR))
-                os.makedirs(VENV_BASE_DIR)
+                log_lines.append("Путь: {}".format(venv_base_dir))
+                os.makedirs(venv_base_dir)
                 log_lines.append("Создана успешно")
                 log_lines.append("")
 
@@ -524,8 +587,17 @@ class SetupEnvForm(Form):
 
             if os.path.exists(venv_path):
                 log_lines.append("Папка существует, удаляем...")
-                shutil.rmtree(venv_path)
-                log_lines.append("Папка удалена")
+                try:
+                    shutil.rmtree(venv_path)
+                    log_lines.append("Папка удалена")
+                except (IOError, OSError, WindowsError) as e:
+                    log_lines.append("Ошибка удаления: {}".format(str(e)))
+                    log_path = self.save_log(log_lines, success=False)
+                    raise Exception(
+                        "Нет доступа к директории venv.\n"
+                        "Закройте все программы, использующие папку, или выберите другую папку.\n"
+                        "Лог: {}".format(log_path)
+                    )
             else:
                 log_lines.append("Папка не существует, пропускаем")
 
@@ -587,10 +659,13 @@ class SetupEnvForm(Form):
             log_lines.append("=" * 50)
 
             self.stop_progress()
-            self.run_check()
 
+            # Сохраняем путь к папке venv в настройки
+            set_venv_base_dir(venv_base_dir)
             set_setting("environment.installed", True)
             reset_environment_cache()  # Сбросить кэш для новых проверок
+
+            self.run_check()
 
             # Сохраняем успешный лог
             log_path = self.save_log(log_lines, success=True)

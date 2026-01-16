@@ -32,6 +32,7 @@ Source: "..\build\Register-Extension.ps1"; DestDir: "{app}\tools"; Flags: ignore
 Source: "..\build\Uninstall-CPSK.ps1"; DestDir: "{app}\tools"; Flags: ignoreversion
 Source: "..\build\requirements.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\build\version.yaml"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\build\config.py"; DestDir: "{app}"; Flags: ignoreversion
 
 [Dirs]
 Name: "{app}\logs"
@@ -283,7 +284,7 @@ begin
     if not PyRevitInstalled then
     begin
       UpdateConfigStatus('Installing pyRevit... This may take several minutes.', 20);
-      CmdLine := Format('-NoProfile -ExecutionPolicy Bypass -File "%s" -RequiredVersion "{#PyRevitVersion}" -DownloadUrl "{#PyRevitUrl}"', [PyRevitScript]);
+      CmdLine := '-NoProfile -ExecutionPolicy Bypass -File "' + PyRevitScript + '" -RequiredVersion "{#PyRevitVersion}" -DownloadUrl "{#PyRevitUrl}"';
       WriteLog('Executing: powershell.exe ' + CmdLine);
       if Exec('powershell.exe', CmdLine, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
         WriteLog('Install-PyRevit.ps1 completed with exit code: ' + IntToStr(ResultCode))
