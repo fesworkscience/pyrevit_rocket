@@ -15,7 +15,7 @@ if ($status) {
 }
 
 $tags = git tag -l "v*.*.*" | Sort-Object {
-    $v = $_ -replace '^v', ''
+    $v = $_ -replace '^v', '' -replace '-staging$', ''
     $parts = $v.Split('.')
     [int]$parts[0] * 10000 + [int]$parts[1] * 100 + [int]$parts[2]
 } -Descending
