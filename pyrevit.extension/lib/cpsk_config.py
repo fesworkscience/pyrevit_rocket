@@ -15,54 +15,10 @@ PROJECT_DIR = os.path.dirname(EXTENSION_DIR)  # Корень проекта (pyr
 SETTINGS_FILE = os.path.join(PROJECT_DIR, "cpsk_settings.yaml")
 LIB_DIR = _THIS_DIR
 
-# Путь к venv - фиксированные диски (вне OneDrive)
-# Приоритет: C:\cpsk_envs, D:\cpsk_envs
+# Путь к venv - по умолчанию C:\cpsk_envs
+# Пользователь может изменить путь в настройках окружения
 VENV_NAME = "pyrevit_rocket"
-_CANDIDATE_DIRS = [r"C:\cpsk_envs", r"D:\cpsk_envs"]
-
-
-def _find_writable_base_dir():
-    """
-    Найти директорию для venv с возможностью записи.
-    Сначала проверяет сохранённый путь в настройках, затем ищет доступную директорию.
-    """
-    # Сначала проверяем сохранённый путь в настройках
-    saved_base_dir = _get_saved_venv_base_dir()
-    if saved_base_dir:
-        # Проверяем что сохранённая директория существует и содержит venv
-        venv_path = os.path.join(saved_base_dir, VENV_NAME)
-        if os.path.exists(venv_path) and os.path.exists(os.path.join(venv_path, "Scripts", "python.exe")):
-            return saved_base_dir
-
-    # Иначе ищем директорию с существующим venv
-    for base_dir in _CANDIDATE_DIRS:
-        venv_path = os.path.join(base_dir, VENV_NAME)
-        if os.path.exists(venv_path) and os.path.exists(os.path.join(venv_path, "Scripts", "python.exe")):
-            return base_dir
-
-    # Если venv нигде не найден, ищем доступную для записи директорию
-    for base_dir in _CANDIDATE_DIRS:
-        try:
-            # Создаём папку если не существует
-            if not os.path.exists(base_dir):
-                os.makedirs(base_dir)
-
-            # Пробуем создать временный файл
-            test_file = os.path.join(base_dir, "_write_test.tmp")
-            with codecs.open(test_file, 'w', 'utf-8') as f:
-                f.write("test")
-
-            # Удаляем тестовый файл
-            os.remove(test_file)
-
-            # Успех - этот диск доступен для записи
-            return base_dir
-        except (IOError, OSError, WindowsError):
-            # Нет прав или диск недоступен - пробуем следующий
-            continue
-
-    # Fallback на первый вариант (покажет ошибку при установке)
-    return _CANDIDATE_DIRS[0]
+DEFAULT_VENV_BASE_DIR = r"C:\cpsk_envs"
 
 
 def _get_saved_venv_base_dir():
@@ -76,68 +32,40 @@ def _get_saved_venv_base_dir():
                 if 'venv_base_dir:' in line:
                     # Извлекаем значение после двоеточия
                     value = line.split(':', 1)[1].strip().strip('"').strip("'")
-                    if value and os.path.exists(value):
+                    if value:
                         return value
     except Exception:
         pass
     return None
 
 
-# Определяем базовую директорию при импорте модуля
-VENV_BASE_DIR = _find_writable_base_dir()
-
-
-def get_alternative_venv_dirs():
-    """Получить список альтернативных директорий для venv (кроме текущей)."""
-    return [d for d in _CANDIDATE_DIRS if d != VENV_BASE_DIR]
-
-
-def switch_to_alternative_venv_dir(current_dir):
+def _get_venv_base_dir():
     """
-    Переключиться на альтернативную директорию для venv.
-    Используется при ошибке доступа к текущей директории.
-    Сохраняет выбранную директорию в настройки.
+    Получить базовую директорию для venv.
+    Приоритет: сохранённый путь в настройках -> путь по умолчанию.
+    """
+    saved = _get_saved_venv_base_dir()
+    if saved:
+        return saved
+    return DEFAULT_VENV_BASE_DIR
 
-    :param current_dir: Текущая директория, которая недоступна
-    :return: Новая директория или None если альтернатив нет
+
+# Определяем базовую директорию при импорте модуля
+VENV_BASE_DIR = _get_venv_base_dir()
+
+
+def set_venv_base_dir(base_dir):
+    """
+    Установить базовую директорию для venv.
+    Сохраняет в настройки и обновляет глобальную переменную.
+
+    :param base_dir: Путь к базовой директории
+    :return: True если успешно, False если ошибка
     """
     global VENV_BASE_DIR
 
-    for base_dir in _CANDIDATE_DIRS:
-        if base_dir == current_dir:
-            continue
-
-        try:
-            # Создаём папку если не существует
-            if not os.path.exists(base_dir):
-                os.makedirs(base_dir)
-
-            # Пробуем создать временный файл
-            test_file = os.path.join(base_dir, "_write_test.tmp")
-            with codecs.open(test_file, 'w', 'utf-8') as f:
-                f.write("test")
-
-            # Удаляем тестовый файл
-            os.remove(test_file)
-
-            # Успех - переключаемся на эту директорию
-            VENV_BASE_DIR = base_dir
-
-            # Сохраняем в настройки (вызываем после определения функции set_setting)
-            _save_venv_base_dir(base_dir)
-
-            return base_dir
-        except (IOError, OSError):
-            continue
-
-    return None
-
-
-def _save_venv_base_dir(base_dir):
-    """Сохранить базовую директорию venv в настройки."""
     try:
-        # Используем set_setting после того как она будет определена
-        # Временно делаем прямую запись в файл
+        # Сохраняем в настройки
         if os.path.exists(SETTINGS_FILE):
             with codecs.open(SETTINGS_FILE, 'r', 'utf-8') as f:
                 content = f.read()
@@ -167,8 +95,38 @@ def _save_venv_base_dir(base_dir):
 
             with codecs.open(SETTINGS_FILE, 'w', 'utf-8') as f:
                 f.write(content)
+
+        # Обновляем глобальную переменную
+        VENV_BASE_DIR = base_dir
+        return True
+
     except Exception:
-        pass
+        return False
+
+
+def check_dir_writable(dir_path):
+    """
+    Проверить возможность записи в директорию.
+
+    :param dir_path: Путь к директории
+    :return: True если можно писать, False если нет
+    """
+    try:
+        # Создаём папку если не существует
+        if not os.path.exists(dir_path):
+            os.makedirs(dir_path)
+
+        # Пробуем создать временный файл
+        test_file = os.path.join(dir_path, "_write_test.tmp")
+        with codecs.open(test_file, 'w', 'utf-8') as f:
+            f.write("test")
+
+        # Удаляем тестовый файл
+        os.remove(test_file)
+        return True
+
+    except (IOError, OSError, WindowsError):
+        return False
 
 # Значения по умолчанию
 # Примечание: venv_path и requirements_path фиксированы в коде (get_venv_path, get_requirements_path)
