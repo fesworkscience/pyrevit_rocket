@@ -53,6 +53,14 @@ from cpsk_config import require_environment
 if not require_environment():
     sys.exit()
 
+# Логгер
+from cpsk_logger import Logger
+
+# Инициализация логгера
+SCRIPT_NAME = "IDStoFOP"
+Logger.init(SCRIPT_NAME)
+Logger.info(SCRIPT_NAME, "Скрипт запущен")
+
 # Импорт IFC маппингов из support_files
 from ifc_mappings import IFC_TO_REVIT_TYPE
 
@@ -65,8 +73,10 @@ class IDSParser:
     def __init__(self, ids_path):
         self.ids_path = ids_path
         self.specifications = []
-        self.all_properties = []  # Все уникальные параметры
-        self.property_sets = {}   # PropertySet -> [properties]
+        self.all_properties = []       # Уникальные параметры по ИМЕНИ (для ФОП)
+        self.all_properties_full = []  # ВСЕ параметры с учётом PropertySet (для Mapping/Report)
+        self.property_sets = {}        # PropertySet -> [properties]
+        self.property_sets_full = {}   # PropertySet -> [properties] (полный, для Mapping/Report)
 
     def parse(self):
         """Парсить IDS файл."""
@@ -190,33 +200,70 @@ class IDSParser:
         return None
 
     def _collect_unique_properties(self):
-        """Собрать уникальные параметры из всех спецификаций."""
-        # Используем dict чтобы накапливать entities для каждого уникального параметра
-        seen = {}  # key -> prop_copy
+        """Собрать параметры из всех спецификаций.
+
+        Создаёт два набора:
+        1. all_properties / property_sets - уникальные по ИМЕНИ (для ФОП)
+        2. all_properties_full / property_sets_full - все с учётом PropertySet (для Mapping/Report)
+        """
+        # Для ФОП - дедупликация по имени параметра
+        seen_by_name = {}  # baseName -> prop_copy
+        # Для Mapping/Report - дедупликация по (propertySet, baseName)
+        seen_by_pset_name = {}  # (propertySet, baseName) -> prop_copy
+
+        duplicates_fop = 0
+        duplicates_full = 0
+
+        Logger.info(SCRIPT_NAME, "Сбор параметров из {} спецификаций".format(len(self.specifications)))
 
         for spec in self.specifications:
             entities = spec["applicability"]
 
             for prop in spec["requirements"]:
-                key = (prop["propertySet"], prop["baseName"])
-                if key not in seen:
-                    # Первое появление - создаём новую запись
+                base_name = prop["baseName"]
+                pset = prop["propertySet"]
+
+                # === 1. Для ФОП (уникальность по имени) ===
+                if base_name not in seen_by_name:
                     prop_copy = dict(prop)
                     prop_copy["entities"] = list(entities)
-                    seen[key] = prop_copy
+                    seen_by_name[base_name] = prop_copy
                     self.all_properties.append(prop_copy)
 
-                    # Группировка по PropertySet
-                    pset = prop["propertySet"]
                     if pset not in self.property_sets:
                         self.property_sets[pset] = []
                     self.property_sets[pset].append(prop_copy)
+
+                    Logger.debug(SCRIPT_NAME, "  + ФОП: {} (PropertySet: {})".format(base_name, pset))
                 else:
-                    # Параметр уже есть - добавляем новые entities
-                    existing = seen[key]
+                    duplicates_fop += 1
+                    existing = seen_by_name[base_name]
                     for ent in entities:
                         if ent not in existing["entities"]:
                             existing["entities"].append(ent)
+
+                # === 2. Для Mapping/Report (уникальность по PropertySet + имя) ===
+                key_full = (pset, base_name)
+                if key_full not in seen_by_pset_name:
+                    prop_copy_full = dict(prop)
+                    prop_copy_full["entities"] = list(entities)
+                    seen_by_pset_name[key_full] = prop_copy_full
+                    self.all_properties_full.append(prop_copy_full)
+
+                    if pset not in self.property_sets_full:
+                        self.property_sets_full[pset] = []
+                    self.property_sets_full[pset].append(prop_copy_full)
+                else:
+                    duplicates_full += 1
+                    existing_full = seen_by_pset_name[key_full]
+                    for ent in entities:
+                        if ent not in existing_full["entities"]:
+                            existing_full["entities"].append(ent)
+
+        Logger.info(SCRIPT_NAME, "Параметров для ФОП (уникальных по имени): {}".format(len(self.all_properties)))
+        Logger.info(SCRIPT_NAME, "Параметров для Mapping/Report (с PropertySet): {}".format(len(self.all_properties_full)))
+        Logger.info(SCRIPT_NAME, "Пропущено дубликатов (ФОП): {}".format(duplicates_fop))
+        Logger.info(SCRIPT_NAME, "Пропущено дубликатов (Mapping): {}".format(duplicates_full))
 
 
 # === ГЕНЕРАТОР ФОП ===
@@ -237,6 +284,10 @@ class FOPGenerator:
 
     def generate(self, output_path):
         """Сгенерировать ФОП файл."""
+        Logger.log_separator(SCRIPT_NAME, "ГЕНЕРАЦИЯ ФОП ФАЙЛА")
+        Logger.info(SCRIPT_NAME, "Путь: {}".format(output_path))
+        Logger.info(SCRIPT_NAME, "Префикс: {}".format(self.prefix if self.prefix else "(нет)"))
+
         lines = []
 
         # Заголовок
@@ -253,6 +304,8 @@ class FOPGenerator:
         for i, pset in enumerate(sorted(self.property_sets.keys()), 1):
             group_ids[pset] = i
             lines.append("GROUP\t{}\t{}".format(i, pset))
+
+        Logger.info(SCRIPT_NAME, "Создано групп: {}".format(len(group_ids)))
 
         # Параметры
         lines.append("*PARAM\tGUID\tNAME\tDATATYPE\tDATACATEGORY\tGROUP\tVISIBLE\tDESCRIPTION\tUSERMODIFIABLE\tHIDEWHENNOVALUE")
@@ -290,10 +343,13 @@ class FOPGenerator:
             )
             lines.append(line)
 
+            Logger.debug(SCRIPT_NAME, "  Параметр: {} | {} | группа: {}".format(name, datatype, prop["propertySet"]))
+
         # Записать файл в UTF-16 LE с BOM (требование Revit!)
         with codecs.open(output_path, 'w', 'utf-16') as f:
             f.write("\n".join(lines))
 
+        Logger.info(SCRIPT_NAME, "ФОП файл создан: {} параметров".format(len(self.properties)))
         return len(self.properties)
 
 
@@ -419,12 +475,12 @@ class ReportGenerator:
         html.append("<h1>IDS Parameters Report</h1>")
         if self.prefix:
             html.append("<p>Prefix: <strong>{}</strong></p>".format(self.prefix))
-        html.append("<p>Total PropertySets: {}</p>".format(len(self.parser.property_sets)))
-        html.append("<p>Total Parameters: {}</p>".format(len(self.parser.all_properties)))
+        html.append("<p>Total PropertySets: {}</p>".format(len(self.parser.property_sets_full)))
+        html.append("<p>Total Parameters: {}</p>".format(len(self.parser.all_properties_full)))
 
-        # Таблица по PropertySets
-        for pset in sorted(self.parser.property_sets.keys()):
-            props = self.parser.property_sets[pset]
+        # Таблица по PropertySets (используем полный список с учётом PropertySet)
+        for pset in sorted(self.parser.property_sets_full.keys()):
+            props = self.parser.property_sets_full[pset]
             html.append("<h2>{} ({} params)</h2>".format(pset, len(props)))
             html.append("<table>")
             html.append("<tr><th>IDS Parameter</th><th>FOP Parameter</th><th>Type</th><th>Required</th><th>Entities</th><th>Allowed Values</th></tr>")
@@ -647,15 +703,21 @@ class IDStoFOPForm(Form):
     def on_generate(self, sender, args):
         """Генерация файлов."""
         try:
+            Logger.log_separator(SCRIPT_NAME, "ГЕНЕРАЦИЯ ФАЙЛОВ")
+            Logger.info(SCRIPT_NAME, "IDS файл: {}".format(self.ids_path))
+            Logger.info(SCRIPT_NAME, "Папка вывода: {}".format(self.output_folder))
+
             self.lbl_status.Text = "Парсинг IDS файла..."
             self.lbl_status.ForeColor = Color.Black
             System.Windows.Forms.Application.DoEvents()
 
             # Парсинг IDS
+            Logger.info(SCRIPT_NAME, "Парсинг IDS файла...")
             parser = IDSParser(self.ids_path)
             parser.parse()
 
             if not parser.all_properties:
+                Logger.warning(SCRIPT_NAME, "В IDS файле не найдено параметров!")
                 self.lbl_status.Text = "В IDS файле не найдено параметров!"
                 self.lbl_status.ForeColor = Color.Red
                 return
@@ -667,22 +729,24 @@ class IDStoFOPForm(Form):
             # Добавить префикс к имени файла если указан
             if prefix:
                 file_prefix = "{}_{}".format(prefix, base_name)
+                Logger.info(SCRIPT_NAME, "Префикс файлов: {}".format(file_prefix))
             else:
                 file_prefix = base_name
 
-            # ФОП
+            # ФОП - используем дедуплицированные по имени (all_properties)
             if self.chk_fop.Checked:
                 fop_path = os.path.join(self.output_folder, file_prefix + "_SharedParams.txt")
                 gen = FOPGenerator(parser.all_properties, parser.property_sets, prefix)
                 count = gen.generate(fop_path)
                 results.append("ФОП: {} параметров".format(count))
 
-            # IFC Mapping
+            # IFC Mapping - используем ПОЛНЫЙ список (all_properties_full)
             if self.chk_mapping.Checked:
                 map_path = os.path.join(self.output_folder, file_prefix + "_IFCMapping.txt")
-                gen = IFCMappingGenerator(parser.all_properties, parser.property_sets, prefix)
+                gen = IFCMappingGenerator(parser.all_properties_full, parser.property_sets_full, prefix)
                 count = gen.generate(map_path)
                 results.append("IFC Mapping: {} параметров".format(count))
+                Logger.info(SCRIPT_NAME, "IFC Mapping создан: {} параметров".format(count))
 
             # HTML Report
             if self.chk_report.Checked:
@@ -690,12 +754,19 @@ class IDStoFOPForm(Form):
                 gen = ReportGenerator(parser, prefix)
                 gen.generate(report_path)
                 results.append("HTML отчёт создан")
+                Logger.info(SCRIPT_NAME, "HTML отчёт создан: {}".format(report_path))
+
+            Logger.log_separator(SCRIPT_NAME, "ИТОГИ")
+            Logger.info(SCRIPT_NAME, "Генерация завершена успешно")
+            Logger.info(SCRIPT_NAME, "Результаты: {}".format(", ".join(results)))
+            Logger.info(SCRIPT_NAME, "Лог: {}".format(Logger.get_log_path()))
 
             self.lbl_status.Text = "Готово! " + ", ".join(results)
             self.lbl_status.ForeColor = Color.Green
             self.btn_open_folder.Enabled = True
 
         except Exception as e:
+            Logger.error(SCRIPT_NAME, "Ошибка генерации: {}".format(str(e)))
             self.lbl_status.Text = "Ошибка: {}".format(str(e))
             self.lbl_status.ForeColor = Color.Red
 
@@ -713,3 +784,4 @@ class IDStoFOPForm(Form):
 if __name__ == "__main__":
     form = IDStoFOPForm()
     form.ShowDialog()
+    Logger.info(SCRIPT_NAME, "Скрипт завершён")

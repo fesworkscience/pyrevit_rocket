@@ -21,23 +21,28 @@ import System
 from System.Windows.Forms import (
     Form, Label, Button, Panel, CheckBox, ComboBox, ListBox,
     DockStyle, FormStartPosition, FormBorderStyle,
-    DialogResult, OpenFileDialog, CheckedListBox,
+    DialogResult, OpenFileDialog,
     SelectionMode, GroupBox, ScrollBars
 )
 from System.Drawing import Point, Size, Color, Font, FontStyle
 
 from pyrevit import revit, forms, script
 
-# Добавляем lib в путь для импорта cpsk_config
+# Добавляем lib и support_files в путь для импорта
 SCRIPT_DIR = os.path.dirname(__file__)
-LIB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))), "lib")
+EXTENSION_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR))))
+LIB_DIR = os.path.join(EXTENSION_DIR, "lib")
+SUPPORT_DIR = os.path.join(EXTENSION_DIR, "support_files")
 if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
+if SUPPORT_DIR not in sys.path:
+    sys.path.insert(0, SUPPORT_DIR)
 
 # Импорт модулей из lib
 from cpsk_notify import show_error, show_warning, show_info, show_success
 from cpsk_auth import require_auth
 from cpsk_config import require_environment
+from cpsk_logger import Logger
 
 # Проверка авторизации
 if not require_auth():
@@ -46,6 +51,11 @@ if not require_auth():
 # Проверка окружения
 if not require_environment():
     sys.exit()
+
+# Инициализация логгера (очищает лог при каждом запуске)
+SCRIPT_NAME = "FOPtoProject"
+Logger.init(SCRIPT_NAME)
+Logger.info(SCRIPT_NAME, "Скрипт запущен")
 
 # Revit API
 from Autodesk.Revit.DB import (
@@ -61,38 +71,18 @@ except ImportError:
     # Revit 2024+ использует GroupTypeId
     from Autodesk.Revit.DB import GroupTypeId as BuiltInParameterGroup
 
+# Импорт IFC маппингов из support_files
+from ifc_mappings import IFC_TO_REVIT_CATEGORY_IDS
+
 # === НАСТРОЙКИ ===
 
 doc = revit.doc
 app = revit.doc.Application
 output = script.get_output()
 
-# IFC класс -> Категории Revit
-IFC_TO_REVIT_CATEGORIES = {
-    "IFCWALL": [("Стены", BuiltInCategory.OST_Walls)],
-    "IFCWALLSTANDARDCASE": [("Стены", BuiltInCategory.OST_Walls)],
-    "IFCSLAB": [("Перекрытия", BuiltInCategory.OST_Floors)],
-    "IFCCOLUMN": [("Колонны несущие", BuiltInCategory.OST_StructuralColumns)],
-    "IFCBEAM": [("Каркас несущий", BuiltInCategory.OST_StructuralFraming)],
-    "IFCMEMBER": [("Каркас несущий", BuiltInCategory.OST_StructuralFraming)],
-    "IFCPLATE": [("Каркас несущий", BuiltInCategory.OST_StructuralFraming)],
-    "IFCFOOTING": [("Фундамент несущий", BuiltInCategory.OST_StructuralFoundation)],
-    "IFCPILE": [("Фундамент несущий", BuiltInCategory.OST_StructuralFoundation)],
-    "IFCSTAIR": [("Лестницы", BuiltInCategory.OST_Stairs)],
-    "IFCSTAIRFLIGHT": [("Лестницы", BuiltInCategory.OST_Stairs)],
-    "IFCRAMP": [("Пандусы", BuiltInCategory.OST_Ramps)],
-    "IFCRAMPFLIGHT": [("Пандусы", BuiltInCategory.OST_Ramps)],
-    "IFCRAILING": [("Ограждения", BuiltInCategory.OST_StairsRailing)],
-    "IFCREINFORCINGBAR": [("Арматура несущая", BuiltInCategory.OST_Rebar)],
-    "IFCELEMENTASSEMBLY": [("Обобщенные модели", BuiltInCategory.OST_GenericModel)],
-    "IFCBUILDINGELEMENTPROXY": [("Обобщенные модели", BuiltInCategory.OST_GenericModel)],
-    "IFCROOF": [("Крыши", BuiltInCategory.OST_Roofs)],
-    "IFCCOVERING": [("Полы", BuiltInCategory.OST_Floors), ("Потолки", BuiltInCategory.OST_Ceilings)],
-    "IFCMECHANICALFASTENERTYPE": [("Несущие соединения", BuiltInCategory.OST_StructConnections)],
-    "IFCDISCRETEACCESSORY": [("Несущие соединения", BuiltInCategory.OST_StructConnections)],
-    "IFCBUILDING": [],  # Параметры проекта, не элемента
-    "IFCMATERIAL": [],  # Материалы - отдельная обработка
-}
+# IFC_TO_REVIT_CATEGORIES теперь импортируется из ifc_mappings.py
+# Формат: IFC_CLASS -> [(русское_имя, builtin_category_id), ...]
+IFC_TO_REVIT_CATEGORIES = IFC_TO_REVIT_CATEGORY_IDS
 
 # Все категории для UI
 ALL_CATEGORIES = [
@@ -495,7 +485,7 @@ class FOPtoProjectForm(Form):
 
         # === Выбор IDS файла ===
         lbl_ids = Label()
-        lbl_ids.Text = "IDS файл (опционально, для автоопределения категорий):"
+        lbl_ids.Text = "IDS файл (обязательно):"
         lbl_ids.Location = Point(15, y)
         lbl_ids.AutoSize = True
         self.Controls.Add(lbl_ids)
@@ -570,36 +560,33 @@ class FOPtoProjectForm(Form):
 
         y += 35
 
-        # === Список параметров ===
+        # === Список параметров (предпросмотр) ===
         grp_params = GroupBox()
-        grp_params.Text = "Параметры из ФОП (выберите для добавления)"
+        grp_params.Text = "Параметры из ФОП (все будут добавлены)"
         grp_params.Location = Point(15, y)
         grp_params.Size = Size(300, 280)
 
-        self.lst_params = CheckedListBox()
+        self.lst_params = ListBox()
         self.lst_params.Location = Point(10, 20)
         self.lst_params.Size = Size(280, 250)
-        self.lst_params.CheckOnClick = True
         self.lst_params.SelectedIndexChanged += self.on_param_selected
         grp_params.Controls.Add(self.lst_params)
 
         self.Controls.Add(grp_params)
 
-        # === Список категорий ===
+        # === Список категорий (предпросмотр из IDS) ===
         grp_cats = GroupBox()
-        grp_cats.Text = "Категории Revit (куда добавить)"
+        grp_cats.Text = "Категории Revit (из IDS)"
         grp_cats.Location = Point(325, y)
         grp_cats.Size = Size(300, 280)
 
-        self.lst_cats = CheckedListBox()
+        self.lst_cats = ListBox()
         self.lst_cats.Location = Point(10, 20)
         self.lst_cats.Size = Size(280, 250)
-        self.lst_cats.CheckOnClick = True
+        # Режим без выбора (только просмотр)
+        self.lst_cats.SelectionMode = getattr(SelectionMode, "None")
 
-        # Заполнить категории
-        for cat_name, cat_id in ALL_CATEGORIES:
-            self.lst_cats.Items.Add(cat_name, False)
-
+        # Категории будут заполняться автоматически из IDS
         grp_cats.Controls.Add(self.lst_cats)
         self.Controls.Add(grp_cats)
 
@@ -673,37 +660,6 @@ class FOPtoProjectForm(Form):
 
         y += 35
 
-        # === Кнопки выбора ===
-        btn_select_all_params = Button()
-        btn_select_all_params.Text = "Все параметры"
-        btn_select_all_params.Location = Point(15, y)
-        btn_select_all_params.Width = 100
-        btn_select_all_params.Click += self.on_select_all_params
-        self.Controls.Add(btn_select_all_params)
-
-        btn_apply_ids = Button()
-        btn_apply_ids.Text = "Применить из IDS"
-        btn_apply_ids.Location = Point(125, y)
-        btn_apply_ids.Width = 110
-        btn_apply_ids.Click += self.on_apply_ids_categories
-        self.Controls.Add(btn_apply_ids)
-
-        btn_select_all_cats = Button()
-        btn_select_all_cats.Text = "Все категории"
-        btn_select_all_cats.Location = Point(325, y)
-        btn_select_all_cats.Width = 100
-        btn_select_all_cats.Click += self.on_select_all_cats
-        self.Controls.Add(btn_select_all_cats)
-
-        btn_clear_cats = Button()
-        btn_clear_cats.Text = "Очистить"
-        btn_clear_cats.Location = Point(435, y)
-        btn_clear_cats.Width = 80
-        btn_clear_cats.Click += self.on_clear_cats
-        self.Controls.Add(btn_clear_cats)
-
-        y += 35
-
         # === Статус ===
         self.lbl_status = Label()
         self.lbl_status.Text = "Выберите IDS и ФОП файлы"
@@ -741,14 +697,29 @@ class FOPtoProjectForm(Form):
 
     def load_ids(self):
         """Загрузить и парсить IDS файл."""
+        Logger.log_separator(SCRIPT_NAME, "Загрузка IDS файла")
+        Logger.file_opened(SCRIPT_NAME, self.ids_path, "IDS файл")
+
         try:
             self.ids_data = parse_ids_simple(self.ids_path)
             count = len(self.ids_data)
+
+            Logger.info(SCRIPT_NAME, "IDS успешно загружен: {} параметров".format(count))
+            Logger.data(SCRIPT_NAME, "Параметры IDS", list(self.ids_data.keys()))
+
             self.lbl_status.Text = "IDS: {} параметров найдено".format(count)
             self.lbl_status.ForeColor = Color.DarkGreen
+            self.update_add_button_state()
+
         except Exception as e:
+            Logger.error(SCRIPT_NAME, "Ошибка загрузки IDS: {}".format(str(e)), exc_info=True)
             self.lbl_status.Text = "Ошибка IDS: {}".format(str(e))
             self.lbl_status.ForeColor = Color.Red
+
+    def update_add_button_state(self):
+        """Обновить состояние кнопки 'Добавить' в зависимости от загруженных файлов."""
+        # Кнопка активна только когда загружены оба файла
+        self.btn_add.Enabled = bool(self.ids_path and self.fop_path and self.parser and self.ids_data)
 
     def on_browse(self, sender, args):
         """Выбор ФОП файла."""
@@ -764,11 +735,14 @@ class FOPtoProjectForm(Form):
         """
         Получить имя параметра для поиска в IDS (без префикса).
         ФОП: 'ЦГЭ_Класс прочности' -> IDS: 'Класс прочности'
+        Также убираем лишние пробелы в начале/конце.
         """
         prefix = self.txt_prefix.Text.strip()
-        if prefix and fop_name.startswith(prefix + "_"):
-            return fop_name[len(prefix) + 1:]
-        return fop_name
+        # Убираем лишние пробелы из имени параметра
+        name = fop_name.strip()
+        if prefix and name.startswith(prefix + "_"):
+            return name[len(prefix) + 1:].strip()
+        return name.strip()
 
     def on_prefix_changed(self, sender, args):
         """При изменении префикса обновить статус."""
@@ -784,13 +758,23 @@ class FOPtoProjectForm(Form):
 
     def load_fop(self):
         """Загрузить и парсить ФОП файл."""
+        Logger.log_separator(SCRIPT_NAME, "Загрузка ФОП файла")
+        Logger.file_opened(SCRIPT_NAME, self.fop_path, "ФОП файл")
+
+        prefix = self.txt_prefix.Text.strip()
+        Logger.debug(SCRIPT_NAME, "Префикс для сопоставления: '{}'".format(prefix if prefix else "(нет)"))
+
         try:
             self.parser = FOPParser(self.fop_path)
             self.parser.parse()
 
+            Logger.info(SCRIPT_NAME, "ФОП успешно распарсен: {} параметров".format(len(self.parser.parameters)))
+
             # Заполнить список параметров
             self.lst_params.Items.Clear()
             matched_count = 0
+            matched_params = []
+            unmatched_params = []
 
             for param in self.parser.parameters:
                 fop_name = param['name']
@@ -801,11 +785,21 @@ class FOPtoProjectForm(Form):
                 if ids_name in self.ids_data:
                     marker = " [IDS]"
                     matched_count += 1
+                    matched_params.append(fop_name)
+                else:
+                    unmatched_params.append(fop_name)
 
                 display = "{}{}".format(fop_name, marker)
-                self.lst_params.Items.Add(display, False)
+                self.lst_params.Items.Add(display)
 
-            prefix = self.txt_prefix.Text.strip()
+            Logger.info(SCRIPT_NAME, "Сопоставление: {} совпадают с IDS, {} без совпадения".format(
+                matched_count, len(unmatched_params)))
+
+            if matched_params:
+                Logger.data(SCRIPT_NAME, "Параметры с совпадением в IDS", matched_params)
+            if unmatched_params:
+                Logger.data(SCRIPT_NAME, "Параметры БЕЗ совпадения в IDS", unmatched_params)
+
             status = "ФОП: {} параметров".format(len(self.parser.parameters))
             if prefix:
                 status += " (префикс: {})".format(prefix)
@@ -814,14 +808,15 @@ class FOPtoProjectForm(Form):
 
             self.lbl_status.Text = status
             self.lbl_status.ForeColor = Color.Black
-            self.btn_add.Enabled = True
+            self.update_add_button_state()
 
         except Exception as e:
+            Logger.error(SCRIPT_NAME, "Ошибка загрузки ФОП: {}".format(str(e)), exc_info=True)
             self.lbl_status.Text = "Ошибка ФОП: {}".format(str(e))
             self.lbl_status.ForeColor = Color.Red
 
     def on_param_selected(self, sender, args):
-        """При выборе параметра показать рекомендацию из IDS."""
+        """При выборе параметра показать категории и допустимые значения из IDS."""
         if self.lst_params.SelectedIndex < 0:
             return
         if not self.parser:
@@ -832,11 +827,17 @@ class FOPtoProjectForm(Form):
         fop_name = param['name']
         ids_name = self.get_ids_name(fop_name)
 
+        # Очистить список категорий
+        self.lst_cats.Items.Clear()
+
         if ids_name in self.ids_data:
             info = self.ids_data[ids_name]
 
-            # Категории
+            # Категории - показать в списке категорий
             cats = get_revit_categories_for_param(info)
+            for cat_name, _ in sorted(cats, key=lambda x: x[0]):
+                self.lst_cats.Items.Add(cat_name)
+
             cat_names = [c[0] for c in cats] if cats else ["(не определено)"]
 
             # Instance/Type
@@ -886,70 +887,6 @@ class FOPtoProjectForm(Form):
             if hasattr(self, 'lbl_instructions'):
                 self.lbl_instructions.Text = instructions if instructions else ""
 
-    def on_apply_ids_categories(self, sender, args):
-        """Применить категории из IDS для выбранных параметров."""
-        if not self.ids_data or not self.parser:
-            show_warning("Внимание", "Сначала загрузите IDS и ФОП файлы")
-            return
-
-        # Собрать все категории для выбранных параметров
-        selected_cats = set()
-        is_type_count = 0
-        is_instance_count = 0
-
-        for i in range(self.lst_params.Items.Count):
-            if self.lst_params.GetItemChecked(i):
-                param = self.parser.parameters[i]
-                fop_name = param['name']
-                ids_name = self.get_ids_name(fop_name)  # Убираем префикс для поиска в IDS
-
-                if ids_name in self.ids_data:
-                    info = self.ids_data[ids_name]
-                    cats = get_revit_categories_for_param(info)
-                    for cat_name, _ in cats:
-                        selected_cats.add(cat_name)
-
-                    if info.get('is_type'):
-                        is_type_count += 1
-                    else:
-                        is_instance_count += 1
-
-        if not selected_cats:
-            show_warning("Внимание", "Выберите параметры, которые есть в IDS",
-                         details="Проверьте правильность префикса.")
-            return
-
-        # Отметить категории
-        for i in range(self.lst_cats.Items.Count):
-            cat_name = str(self.lst_cats.Items[i])
-            self.lst_cats.SetItemChecked(i, cat_name in selected_cats)
-
-        # Установить Instance/Type по большинству
-        if is_type_count > is_instance_count:
-            self.chk_instance.Checked = False
-            msg = "Применены категории из IDS. Рекомендация: ПО ТИПУ (большинство параметров)"
-        else:
-            self.chk_instance.Checked = True
-            msg = "Применены категории из IDS. Рекомендация: ПО ЭКЗЕМПЛЯРУ"
-
-        self.lbl_status.Text = msg
-        self.lbl_status.ForeColor = Color.DarkGreen
-
-    def on_select_all_params(self, sender, args):
-        """Выбрать все параметры."""
-        for i in range(self.lst_params.Items.Count):
-            self.lst_params.SetItemChecked(i, True)
-
-    def on_select_all_cats(self, sender, args):
-        """Выбрать все категории."""
-        for i in range(self.lst_cats.Items.Count):
-            self.lst_cats.SetItemChecked(i, True)
-
-    def on_clear_cats(self, sender, args):
-        """Очистить выбор категорий."""
-        for i in range(self.lst_cats.Items.Count):
-            self.lst_cats.SetItemChecked(i, False)
-
     def get_param_group(self):
         """Получить группу параметров Revit."""
         index = self.cmb_group.SelectedIndex
@@ -960,58 +897,144 @@ class FOPtoProjectForm(Form):
         group_name, group_obj = self.param_groups[index]
         return group_obj
 
+    def log_mismatches(self):
+        """Логировать несовпадения между IDS и ФОП."""
+        if not self.ids_data or not self.parser:
+            return
+
+        Logger.log_separator(SCRIPT_NAME, "Анализ несовпадений IDS и ФОП")
+
+        # Создаём множество нормализованных имён из ФОП
+        fop_names_normalized = set()
+        for p in self.parser.parameters:
+            fop_names_normalized.add(self.get_ids_name(p['name']))
+
+        # IDS параметры без соответствия в ФОП
+        ids_only = [name for name in self.ids_data.keys() if name not in fop_names_normalized]
+
+        # ФОП параметры без соответствия в IDS
+        fop_only = []
+        for p in self.parser.parameters:
+            ids_name = self.get_ids_name(p['name'])
+            if ids_name not in self.ids_data:
+                fop_only.append(p['name'])
+
+        if ids_only:
+            Logger.warning(SCRIPT_NAME, "Параметры IDS без соответствия в ФОП ({} шт):".format(len(ids_only)))
+            for name in ids_only:
+                Logger.warning(SCRIPT_NAME, "  - {}".format(name))
+
+        if fop_only:
+            Logger.warning(SCRIPT_NAME, "Параметры ФОП без соответствия в IDS ({} шт):".format(len(fop_only)))
+            for name in fop_only:
+                Logger.warning(SCRIPT_NAME, "  - {}".format(name))
+
+        if not ids_only and not fop_only:
+            Logger.info(SCRIPT_NAME, "Все параметры IDS и ФОП совпадают")
+
+        return ids_only, fop_only
+
     def on_add_params(self, sender, args):
-        """Добавить выбранные параметры в проект."""
-        # Получить выбранные параметры
-        selected_indices = []
-        for i in range(self.lst_params.Items.Count):
-            if self.lst_params.GetItemChecked(i):
-                selected_indices.append(i)
+        """Добавить все параметры из ФОП в проект."""
+        Logger.log_separator(SCRIPT_NAME, "ДОБАВЛЕНИЕ ПАРАМЕТРОВ В ПРОЕКТ")
 
-        if not selected_indices:
-            show_warning("Внимание", "Выберите параметры для добавления")
+        # Проверка обязательных файлов
+        if not self.ids_path or not self.ids_data:
+            Logger.error(SCRIPT_NAME, "IDS файл не выбран или не загружен")
+            show_error("Ошибка", "Необходимо выбрать IDS файл",
+                       details="IDS файл обязателен для определения категорий параметров.")
             return
 
-        # Получить выбранные категории
-        selected_cat_indices = []
-        for i in range(self.lst_cats.Items.Count):
-            if self.lst_cats.GetItemChecked(i):
-                selected_cat_indices.append(i)
-
-        if not selected_cat_indices:
-            show_warning("Внимание", "Выберите категории для добавления параметров")
+        if not self.fop_path or not self.parser:
+            Logger.error(SCRIPT_NAME, "ФОП файл не выбран или не загружен")
+            show_error("Ошибка", "Необходимо выбрать ФОП файл",
+                       details="ФОП файл содержит определения параметров для добавления в проект.")
             return
+
+        Logger.info(SCRIPT_NAME, "IDS: {}".format(self.ids_path))
+        Logger.info(SCRIPT_NAME, "ФОП: {}".format(self.fop_path))
+
+        # Логируем несовпадения
+        self.log_mismatches()
+
+        # Добавляем ВСЕ параметры из списка
+        if not self.parser.parameters:
+            Logger.warning(SCRIPT_NAME, "Нет параметров для добавления")
+            show_warning("Внимание", "Нет параметров в ФОП файле")
+            return
+
+        all_indices = list(range(len(self.parser.parameters)))
+        all_names = [self.parser.parameters[i]['name'] for i in all_indices]
+        Logger.info(SCRIPT_NAME, "Будет добавлено {} параметров".format(len(all_indices)))
+        Logger.data(SCRIPT_NAME, "Параметры для добавления", all_names)
+
+        # Проверить наличие IDS данных (категории берутся для каждого параметра отдельно)
+        if not self.ids_data:
+            Logger.error(SCRIPT_NAME, "IDS данные не загружены")
+            show_warning("Внимание", "Загрузите IDS файл",
+                         details="Для определения категорий каждого параметра необходим IDS файл.")
+            return
+
+        Logger.info(SCRIPT_NAME, "IDS данные загружены: {} параметров".format(len(self.ids_data)))
 
         # Открыть файл определений
+        Logger.debug(SCRIPT_NAME, "Открытие ФОП файла через Revit API...")
         try:
             app.SharedParametersFilename = self.fop_path
             def_file = app.OpenSharedParameterFile()
             if def_file is None:
+                Logger.error(SCRIPT_NAME, "Revit вернул None при открытии ФОП")
                 show_error("Ошибка", "Не удалось открыть ФОП файл")
                 return
+            Logger.debug(SCRIPT_NAME, "ФОП файл успешно открыт через Revit API")
         except Exception as e:
+            Logger.error(SCRIPT_NAME, "Ошибка открытия ФОП через Revit API: {}".format(str(e)), exc_info=True)
             show_error("Ошибка", "Ошибка открытия ФОП",
                        details=str(e))
             return
 
-        # Создать CategorySet
-        cat_set = CategorySet()
-        for idx in selected_cat_indices:
-            cat_name, cat_id = ALL_CATEGORIES[idx]
-            try:
-                cat = Category.GetCategory(doc, cat_id)
-                if cat:
-                    cat_set.Insert(cat)
-            except:
-                pass
+        # Вспомогательная функция для создания CategorySet для конкретного параметра
+        def create_category_set_for_param(param_categories):
+            """Создать CategorySet из списка категорий [(name, id), ...]"""
+            cat_set = CategorySet()
+            failed = []
+            for cat_name, cat_id in param_categories:
+                try:
+                    bic = BuiltInCategory(cat_id)
+                    cat = Category.GetCategory(doc, bic)
+                    if cat:
+                        if cat.AllowsBoundParameters:
+                            cat_set.Insert(cat)
+                        else:
+                            failed.append(cat_name)
+                            Logger.debug(SCRIPT_NAME, "    {} НЕ ДОПУСКАЕТ привязку".format(cat_name))
+                    else:
+                        failed.append(cat_name)
+                        Logger.debug(SCRIPT_NAME, "    {} НЕ НАЙДЕНА".format(cat_name))
+                except Exception as e:
+                    failed.append(cat_name)
+                    Logger.debug(SCRIPT_NAME, "    {} ОШИБКА: {}".format(cat_name, str(e)))
+            return cat_set, failed
 
-        if cat_set.IsEmpty:
-            show_error("Ошибка", "Не удалось получить категории")
-            return
+        Logger.info(SCRIPT_NAME, "Каждый параметр будет привязан к своим категориям из IDS")
 
         # Параметры
         param_group = self.get_param_group()
         is_instance = self.chk_instance.Checked
+
+        Logger.info(SCRIPT_NAME, "Тип привязки: {}".format("Экземпляр (Instance)" if is_instance else "Тип (Type)"))
+        Logger.info(SCRIPT_NAME, "Группа параметров: {}".format(self.cmb_group.SelectedItem))
+
+        # Собрать имена существующих параметров в проекте
+        existing_param_names = set()
+        bindings_map = doc.ParameterBindings
+        it = bindings_map.ForwardIterator()
+        while it.MoveNext():
+            definition = it.Key
+            existing_param_names.add(definition.Name)
+        Logger.info(SCRIPT_NAME, "Существующих параметров в проекте: {}".format(len(existing_param_names)))
+
+        Logger.log_separator(SCRIPT_NAME, "Начало транзакции")
 
         added_count = 0
         errors = []
@@ -1019,12 +1042,35 @@ class FOPtoProjectForm(Form):
         # Транзакция
         t = Transaction(doc, "Добавить параметры из ФОП")
         t.Start()
+        Logger.debug(SCRIPT_NAME, "Транзакция запущена")
 
         try:
-            for idx in selected_indices:
+            for idx in all_indices:
                 param = self.parser.parameters[idx]
                 param_name = param['name']
                 group_name = param['group_name']
+
+                Logger.debug(SCRIPT_NAME, "Обработка: {} (группа: {})".format(param_name, group_name))
+
+                # Получить категории для ЭТОГО параметра из IDS
+                ids_name = self.get_ids_name(param_name)
+                param_categories = []
+                if ids_name in self.ids_data:
+                    param_categories = get_revit_categories_for_param(self.ids_data[ids_name])
+                    ifc_classes = self.ids_data[ids_name].get('ifc_classes', [])
+                    Logger.debug(SCRIPT_NAME, "  IFC классы: {}".format(", ".join(ifc_classes)))
+                    Logger.debug(SCRIPT_NAME, "  Категории: {}".format(", ".join([c[0] for c in param_categories])))
+                else:
+                    Logger.warning(SCRIPT_NAME, "  Параметр '{}' не найден в IDS (искали '{}')".format(param_name, ids_name))
+                    errors.append("Не в IDS: {}".format(param_name))
+                    continue
+
+                # Создать CategorySet для ЭТОГО параметра
+                cat_set, failed_cats = create_category_set_for_param(param_categories)
+                if cat_set.IsEmpty:
+                    Logger.warning(SCRIPT_NAME, "  ПРОПУСК: нет категорий для привязки")
+                    errors.append("Нет категорий: {}".format(param_name))
+                    continue
 
                 # Найти определение в ФОП
                 ext_def = None
@@ -1034,36 +1080,51 @@ class FOPtoProjectForm(Form):
                         break
 
                 if ext_def is None:
-                    errors.append("Не найден: {}".format(param_name))
+                    errors.append("Не найден в ФОП: {}".format(param_name))
+                    Logger.warning(SCRIPT_NAME, "  ПРОПУСК: параметр не найден в ФОП файле")
                     continue
 
-                # Проверить, не существует ли уже
-                binding = doc.ParameterBindings.get_Item(ext_def)
-                if binding:
+                # Проверить, не существует ли уже (по имени)
+                if param_name in existing_param_names:
                     errors.append("Уже существует: {}".format(param_name))
+                    Logger.info(SCRIPT_NAME, "  ПРОПУСК: параметр '{}' уже существует в проекте".format(param_name))
                     continue
 
-                # Создать привязку
+                # Создать привязку с категориями ЭТОГО параметра
                 if is_instance:
                     new_binding = app.Create.NewInstanceBinding(cat_set)
                 else:
                     new_binding = app.Create.NewTypeBinding(cat_set)
 
-                # Добавить параметр
-                if doc.ParameterBindings.Insert(ext_def, new_binding, param_group):
-                    added_count += 1
-                else:
-                    errors.append("Ошибка добавления: {}".format(param_name))
+                # Добавить параметр (с обработкой ошибок для каждого параметра)
+                try:
+                    if doc.ParameterBindings.Insert(ext_def, new_binding, param_group):
+                        added_count += 1
+                        cat_names = [c[0] for c in param_categories]
+                        Logger.info(SCRIPT_NAME, "  ДОБАВЛЕН: {} -> [{}]".format(param_name, ", ".join(cat_names)))
+                    else:
+                        errors.append("Ошибка добавления: {}".format(param_name))
+                        Logger.error(SCRIPT_NAME, "  ОШИБКА: не удалось добавить параметр")
+                except Exception as bind_err:
+                    errors.append("{}: {}".format(param_name, str(bind_err)))
+                    Logger.warning(SCRIPT_NAME, "  ОШИБКА ПРИВЯЗКИ: {}".format(str(bind_err)))
 
             t.Commit()
+            Logger.debug(SCRIPT_NAME, "Транзакция завершена (Commit)")
 
         except Exception as e:
             t.RollBack()
+            Logger.error(SCRIPT_NAME, "Транзакция откачена (RollBack): {}".format(str(e)), exc_info=True)
             show_error("Ошибка", "Ошибка добавления параметров",
                        details=str(e))
             return
 
         # Результат
+        Logger.log_separator(SCRIPT_NAME, "РЕЗУЛЬТАТ")
+        Logger.result(SCRIPT_NAME, added_count > 0,
+                      "Добавлено: {}, Ошибок: {}".format(added_count, len(errors)),
+                      errors if errors else None)
+
         details = ""
         if errors:
             details = "Проблемы:\n" + "\n".join(errors[:10])
