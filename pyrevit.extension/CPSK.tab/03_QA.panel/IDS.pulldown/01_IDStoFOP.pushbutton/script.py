@@ -33,11 +33,15 @@ from System.Xml import XmlDocument, XmlNamespaceManager
 
 from pyrevit import revit, forms, script
 
-# Добавляем lib в путь для импорта cpsk_config
+# Добавляем lib и support_files в путь для импорта
 SCRIPT_DIR = os.path.dirname(__file__)
-LIB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))), "lib")
+EXTENSION_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR))))
+LIB_DIR = os.path.join(EXTENSION_DIR, "lib")
+SUPPORT_DIR = os.path.join(EXTENSION_DIR, "support_files")
 if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
+if SUPPORT_DIR not in sys.path:
+    sys.path.insert(0, SUPPORT_DIR)
 
 # Проверка авторизации
 from cpsk_auth import require_auth
@@ -49,56 +53,8 @@ from cpsk_config import require_environment
 if not require_environment():
     sys.exit()
 
-# === КОНСТАНТЫ ===
-
-# Маппинг IFC типов данных на типы Revit
-IFC_TO_REVIT_TYPE = {
-    "IFCTEXT": "TEXT",
-    "IFCLABEL": "TEXT",
-    "IFCIDENTIFIER": "TEXT",
-    "IFCBOOLEAN": "YESNO",
-    "IFCLOGICAL": "YESNO",
-    "IFCINTEGER": "INTEGER",
-    "IFCREAL": "NUMBER",
-    "IFCLENGTHMEASURE": "LENGTH",
-    "IFCAREAMEASURE": "AREA",
-    "IFCVOLUMEMEASURE": "VOLUME",
-    "IFCPOSITIVELENGTHMEASURE": "LENGTH",
-    "IFCPLANEANGLEMEASURE": "ANGLE",
-    "IFCMASSMEASURE": "NUMBER",
-    "IFCFORCEMEASURE": "NUMBER",
-    "IFCPRESSUREMEASURE": "NUMBER",
-}
-
-# Маппинг IFC сущностей на категории Revit
-IFC_TO_REVIT_CATEGORY = {
-    "IFCWALL": "Walls",
-    "IFCWALLSTANDARDCASE": "Walls",
-    "IFCSLAB": "Floors",
-    "IFCCOLUMN": "Structural Columns",
-    "IFCBEAM": "Structural Framing",
-    "IFCFOOTING": "Structural Foundations",
-    "IFCPILE": "Structural Foundations",
-    "IFCSTAIR": "Stairs",
-    "IFCSTAIRFLIGHT": "Stairs",
-    "IFCRAMP": "Ramps",
-    "IFCRAMPFLIGHT": "Ramps",
-    "IFCRAILING": "Railings",
-    "IFCMEMBER": "Structural Framing",
-    "IFCPLATE": "Structural Framing",
-    "IFCROOF": "Roofs",
-    "IFCBUILDING": "Project Information",
-    "IFCSITE": "Project Information",
-    "IFCMATERIAL": "Materials",
-    "IFCREINFORCINGBAR": "Structural Rebar",
-    "IFCREINFORCINGMESH": "Structural Rebar",
-    "IFCREINFORCINGELEMENT": "Structural Rebar",
-    "IFCELEMENTASSEMBLY": "Assemblies",
-    "IFCBUILDINGELEMENTPROXY": "Generic Models",
-    "IFCCOVERING": "Floors",
-    "IFCMECHANICALFASTENER": "Structural Connections",
-    "IFCDISCRETEACCESSORY": "Structural Connections",
-}
+# Импорт IFC маппингов из support_files
+from ifc_mappings import IFC_TO_REVIT_TYPE
 
 
 # === ПАРСЕР IDS ===
@@ -208,7 +164,11 @@ class IDSParser:
             prop["instructions"] = instr_attr
 
         # Enumeration (допустимые значения)
-        enum_nodes = prop_node.SelectNodes("ids:value/ids:restriction/ids:enumeration", nsm)
+        # В IDS файлах enumeration может быть с namespace xs: или ids:
+        # Пробуем оба варианта
+        enum_nodes = prop_node.SelectNodes("ids:value/xs:restriction/xs:enumeration", nsm)
+        if not enum_nodes or enum_nodes.Count == 0:
+            enum_nodes = prop_node.SelectNodes("ids:value/ids:restriction/ids:enumeration", nsm)
         if enum_nodes and enum_nodes.Count > 0:
             enums = []
             for enum_node in enum_nodes:
@@ -426,8 +386,15 @@ class IFCMappingGenerator:
 class ReportGenerator:
     """Генератор отчёта о параметрах."""
 
-    def __init__(self, parser):
+    def __init__(self, parser, prefix=""):
         self.parser = parser
+        self.prefix = prefix.strip()
+
+    def _apply_prefix(self, name):
+        """Добавить префикс к имени параметра."""
+        if self.prefix:
+            return "{}_{}".format(self.prefix, name)
+        return name
 
     def generate(self, output_path):
         """Сгенерировать HTML отчёт."""
@@ -445,10 +412,13 @@ class ReportGenerator:
         html.append("th { background: #f5f5f5; }")
         html.append(".required { color: #c00; }")
         html.append(".optional { color: #999; }")
+        html.append(".fop-param { font-family: monospace; background: #f0f0f0; }")
         html.append("</style>")
         html.append("</head><body>")
 
         html.append("<h1>IDS Parameters Report</h1>")
+        if self.prefix:
+            html.append("<p>Prefix: <strong>{}</strong></p>".format(self.prefix))
         html.append("<p>Total PropertySets: {}</p>".format(len(self.parser.property_sets)))
         html.append("<p>Total Parameters: {}</p>".format(len(self.parser.all_properties)))
 
@@ -457,7 +427,7 @@ class ReportGenerator:
             props = self.parser.property_sets[pset]
             html.append("<h2>{} ({} params)</h2>".format(pset, len(props)))
             html.append("<table>")
-            html.append("<tr><th>Parameter</th><th>Type</th><th>Required</th><th>Entities</th><th>Values</th></tr>")
+            html.append("<tr><th>IDS Parameter</th><th>FOP Parameter</th><th>Type</th><th>Required</th><th>Entities</th><th>Allowed Values</th></tr>")
 
             for prop in props:
                 req_class = "required" if prop["cardinality"] == "required" else "optional"
@@ -465,12 +435,20 @@ class ReportGenerator:
                 entities = ", ".join(prop.get("entities", [])[:3])
                 if len(prop.get("entities", [])) > 3:
                     entities += "..."
-                values = ", ".join(prop.get("enumeration", [])[:5]) if prop.get("enumeration") else "-"
-                if prop.get("enumeration") and len(prop["enumeration"]) > 5:
-                    values += "..."
+
+                # Допустимые значения из enumeration
+                enum_list = prop.get("enumeration") or []
+                if enum_list:
+                    values = ", ".join(enum_list)
+                else:
+                    values = "-"
+
+                # Имя параметра в ФОП (с префиксом)
+                fop_param = self._apply_prefix(prop["baseName"])
 
                 html.append("<tr>")
                 html.append("<td>{}</td>".format(prop["baseName"]))
+                html.append("<td class='fop-param'>{}</td>".format(fop_param))
                 html.append("<td>{}</td>".format(prop["dataType"]))
                 html.append("<td class='{}'>{}</td>".format(req_class, req_text))
                 html.append("<td>{}</td>".format(entities))
@@ -708,8 +686,8 @@ class IDStoFOPForm(Form):
 
             # HTML Report
             if self.chk_report.Checked:
-                report_path = os.path.join(self.output_folder, base_name + "_Report.html")
-                gen = ReportGenerator(parser)
+                report_path = os.path.join(self.output_folder, file_prefix + "_Report.html")
+                gen = ReportGenerator(parser, prefix)
                 gen.generate(report_path)
                 results.append("HTML отчёт создан")
 
