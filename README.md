@@ -139,6 +139,28 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
+## Support the Project | Поддержать проект
+
+<div align="center">
+
+<a href="https://gip.su">
+  <img src="https://img.shields.io/badge/GIP_Group-Website-2563eb?style=for-the-badge&logo=googlechrome&logoColor=white" alt="GIP Group">
+</a>
+&nbsp;&nbsp;
+<a href="https://t.me/tehzak2">
+  <img src="https://img.shields.io/badge/Telegram-@tehzak2-26A5E4?style=for-the-badge&logo=telegram&logoColor=white" alt="Telegram">
+</a>
+
+<br><br>
+
+**Evgeny Fedulov** — Lead Developer
+
+[![Telegram](https://img.shields.io/badge/Contact_me-Telegram-26A5E4?style=flat-square&logo=telegram)](https://t.me/tehzak2)
+
+</div>
+
+---
+
 <div align="center">
 
 Made with :heart: by [GIP Group](https://gip.su)
