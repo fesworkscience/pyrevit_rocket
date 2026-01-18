@@ -11,9 +11,7 @@
 
 [English](#features) | [Русский](#возможности)
 
-<img src="docs/screenshot.png" alt="CPSK Tools Interface" width="800">
-
-*Screenshot placeholder - replace with actual interface image*
+<img src="docs/social_preview.png" alt="CPSK Tools" width="800">
 
 </div>
 
