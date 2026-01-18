@@ -83,11 +83,14 @@ git checkout -b feature/my-feature
 
 # 2. Внести изменения...
 
-# 3. ОБЯЗАТЕЛЬНО: проверить код
-"C:/ProgramData/miniconda3/python.exe" "pyrevit.extension/lib/pyrevit_checker.py" "путь/к/script.py"
+# 3. ОБЯЗАТЕЛЬНО: проверить код чекером
+python pyrevit.extension/lib/pyrevit_checker.py pyrevit.extension/CPSK.tab/ПАНЕЛЬ/КНОПКА/script.py
 
-# 4. Коммит и PR
+# 4. Коммит и пуш
 git add . && git commit -m "Описание" && git push origin feature/my-feature
+
+# 5. Создать Pull Request
+# Перейти на https://github.com/fesworkscience/pyrevit_rocket/pulls → New pull request
 ```
 
 ### Требования к коду
