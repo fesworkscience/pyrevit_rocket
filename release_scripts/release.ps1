@@ -75,15 +75,9 @@ git add $versionFile
 git commit -m "Release v$newVersion"
 git tag "v$newVersion"
 
-Write-Host "Pushing to origin..." -ForegroundColor Cyan
+Write-Host "Pushing to origin (GitHub)..." -ForegroundColor Cyan
 git push origin $currentBranch
 git push origin "v$newVersion"
-
-Write-Host "Pushing tag to github..." -ForegroundColor Cyan
-if (-not $Staging) {
-    git push github master
-}
-git push github "v$newVersion"
 
 Write-Host ""
 if ($Staging) {

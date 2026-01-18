@@ -4,7 +4,7 @@
 
 ### Автоматизация промышленного строительства в Autodesk Revit
 
-[![Version](https://img.shields.io/badge/version-1.0.53-blue.svg)](https://github.com/fesworkscience/pyrevit_rocket/releases)
+[![Version](https://img.shields.io/badge/version-1.0.54-blue.svg)](https://github.com/fesworkscience/pyrevit_rocket/releases)
 [![pyRevit](https://img.shields.io/badge/pyRevit-5.0+-green.svg)](https://github.com/pyrevitlabs/pyRevit)
 [![Revit](https://img.shields.io/badge/Revit-2022--2025-orange.svg)](https://www.autodesk.com/products/revit)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](LICENSE)
