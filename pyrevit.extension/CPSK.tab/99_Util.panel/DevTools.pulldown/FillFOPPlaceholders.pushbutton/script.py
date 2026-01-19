@@ -63,7 +63,8 @@ try:
     from Autodesk.Revit.DB import ParameterType as RevitParameterType
     HAS_PARAMETER_TYPE = True
 except ImportError:
-    pass
+    # ParameterType deprecated в Revit 2022+ - используем ForgeTypeId
+    HAS_PARAMETER_TYPE = False
 
 # === НАСТРОЙКИ ===
 
@@ -205,7 +206,8 @@ def is_yes_no_parameter(param):
                 return True
 
     except Exception:
-        pass
+        # Не критично - просто не можем определить тип, будет обработан как обычный Integer
+        return False
 
     return False
 

@@ -172,8 +172,10 @@ jobs:
           $lastTag = git describe --tags --abbrev=0 HEAD^ 2>$null
           if ($lastTag) {
             $commits = git log --pretty=format:"- %s" "$lastTag..HEAD" --no-merges | Where-Object { $_ -notmatch "Release v" }
+            $authors = git log --pretty=format:"%an" "$lastTag..HEAD" --no-merges | Sort-Object -Unique | Where-Object { $_ -ne "github-actions[bot]" }
           } else {
             $commits = git log --pretty=format:"- %s" -10 --no-merges | Where-Object { $_ -notmatch "Release v" }
+            $authors = git log --pretty=format:"%an" -10 --no-merges | Sort-Object -Unique | Where-Object { $_ -ne "github-actions[bot]" }
           }
 
           $version = "${{ steps.version.outputs.VERSION }}"
@@ -185,6 +187,10 @@ jobs:
             $serverNotes += ($commits -join "`n")
           } else {
             $serverNotes += "- Обновление версии"
+          }
+          if ($authors) {
+            $serverNotes += "`n`n### Авторы`n"
+            $serverNotes += ($authors | ForEach-Object { "- $_" }) -join "`n"
           }
           $serverNotes += "`n`n### Требования`n- Windows 10/11`n- Autodesk Revit 2021-2025"
           $serverNotes | Out-File -FilePath "release_notes.txt" -Encoding UTF8
@@ -200,6 +206,10 @@ jobs:
             $githubNotes += ($commits -join "`n")
           } else {
             $githubNotes += "- Обновление версии"
+          }
+          if ($authors) {
+            $githubNotes += "`n`n### Авторы`n"
+            $githubNotes += ($authors | ForEach-Object { "- $_" }) -join "`n"
           }
           $githubNotes += "`n`n### Требования`n- Windows 10/11`n- Autodesk Revit 2021-2025"
           $githubNotes | Out-File -FilePath "github_release_notes.txt" -Encoding UTF8

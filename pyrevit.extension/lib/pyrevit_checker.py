@@ -356,6 +356,10 @@ class PyRevitChecker:
                 if 'OperationCanceledException' in stripped:
                     has_notify_in_block = True
 
+                # ImportError - стандартная практика для опциональных импортов
+                if 'ImportError' in stripped:
+                    has_notify_in_block = True
+
                 continue
 
             # Внутри except блока
@@ -376,8 +380,11 @@ class PyRevitChecker:
                         except_indent = current_indent
                         has_notify_in_block = False
 
-                # Проверяем наличие cpsk_notify внутри блока (ТОЛЬКО cpsk_notify!)
+                # Проверяем наличие cpsk_notify или Logger внутри блока
                 if 'show_error' in line or 'show_warning' in line or 'show_info' in line or 'show_success' in line:
+                    has_notify_in_block = True
+                # Logger.warning/error тоже считается уведомлением (логирование)
+                if 'Logger.warning' in line or 'Logger.error' in line:
                     has_notify_in_block = True
                 # return, raise, continue - допустимые варианты
                 # (return/raise - возвращают/перебрасывают, continue - пропуск в цикле)
@@ -626,6 +633,8 @@ class PyRevitChecker:
         - ParameterType -> SpecTypeId
         - UnitType -> SpecTypeId
         - DisplayUnitType -> UnitTypeId
+
+        Примечание: импорты внутри try/except допустимы (fallback для разных версий Revit).
         """
         # Устаревшие импорты и их замены
         deprecated_imports = {
@@ -635,7 +644,29 @@ class PyRevitChecker:
             'DisplayUnitType': 'Deprecated в Revit 2022+. Используйте ForgeTypeId/UnitTypeId.',
         }
 
+        # Определяем строки внутри try блоков (для fallback импортов)
+        in_try_block = False
+        try_indent = 0
+        try_lines = set()
+
         for i, line in enumerate(lines, 1):
+            stripped = line.lstrip()
+            current_indent = len(line) - len(stripped)
+
+            if stripped.startswith('try:'):
+                in_try_block = True
+                try_indent = current_indent
+            elif in_try_block:
+                if stripped and current_indent <= try_indent and not stripped.startswith('#'):
+                    in_try_block = False
+                else:
+                    try_lines.add(i)
+
+        for i, line in enumerate(lines, 1):
+            # Пропускаем строки внутри try блоков (fallback импорты)
+            if i in try_lines:
+                continue
+
             code_part = line.split('#')[0]
 
             # Проверяем импорты из Autodesk.Revit.DB
