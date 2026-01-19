@@ -124,8 +124,7 @@ class IDSParser:
                     val = enum_node.GetAttribute("value")
                     if val:
                         entity = val.strip().upper()
-                        # Пропускаем *TYPE - это типы семейств, не экземпляры
-                        if not entity.endswith("TYPE") and entity not in spec["applicability"]:
+                        if entity and entity not in spec["applicability"]:
                             spec["applicability"].append(entity)
 
         # Requirements - требуемые параметры
@@ -369,6 +368,69 @@ class IFCMappingGenerator:
             return "{}_{}".format(self.prefix, name)
         return name
 
+    def _convert_ifc_class_name(self, ifc_name):
+        """
+        Конвертировать имя IFC класса в правильный формат IfcXxxYyy.
+
+        IFCWALL -> IfcWall
+        IFCWALLTYPE -> IfcWallType
+        IFCWALLSTANDARDCASE -> IfcWallStandardCase
+        """
+        name = ifc_name.upper()
+        if not name.startswith("IFC"):
+            return ifc_name
+
+        # Убираем префикс IFC
+        rest = name[3:]
+
+        # Словарь известных составных имён
+        known_compounds = {
+            "WALLTYPE": "WallType",
+            "WALLSTANDARDCASE": "WallStandardCase",
+            "WALLELEMENTEDCASE": "WallElementedCase",
+            "SLABTYPE": "SlabType",
+            "SLABSTANDARDCASE": "SlabStandardCase",
+            "SLABELEMENTEDCASE": "SlabElementedCase",
+            "BEAMTYPE": "BeamType",
+            "BEAMSTANDARDCASE": "BeamStandardCase",
+            "COLUMNTYPE": "ColumnType",
+            "COLUMNSTANDARDCASE": "ColumnStandardCase",
+            "MEMBERTYPE": "MemberType",
+            "MEMBERSTANDARDCASE": "MemberStandardCase",
+            "PLATETYPE": "PlateType",
+            "PLATESTANDARDCASE": "PlateStandardCase",
+            "FOOTINGTYPE": "FootingType",
+            "PILETYPE": "PileType",
+            "REINFORCINGBAR": "ReinforcingBar",
+            "REINFORCINGBARTYPE": "ReinforcingBarType",
+            "REINFORCINGMESH": "ReinforcingMesh",
+            "REINFORCINGMESHTYPE": "ReinforcingMeshType",
+            "ELEMENTASSEMBLY": "ElementAssembly",
+            "ELEMENTASSEMBLYTYPE": "ElementAssemblyType",
+            "BUILDINGELEMENTPROXY": "BuildingElementProxy",
+            "BUILDINGELEMENTPROXYTYPE": "BuildingElementProxyType",
+            "DOORTYPE": "DoorType",
+            "DOORSTANDARDCASE": "DoorStandardCase",
+            "WINDOWTYPE": "WindowType",
+            "WINDOWSTANDARDCASE": "WindowStandardCase",
+            "STAIRTYPE": "StairType",
+            "STAIRFLIGHT": "StairFlight",
+            "STAIRFLIGHTTYPE": "StairFlightType",
+            "RAMPTYPE": "RampType",
+            "RAMPFLIGHT": "RampFlight",
+            "RAMPFLIGHTTYPE": "RampFlightType",
+            "RAILINGTYPE": "RailingType",
+            "ROOFTYPE": "RoofType",
+            "CURTAINWALLTYPE": "CurtainWallType",
+            "COVERINGTYPE": "CoveringType",
+        }
+
+        if rest in known_compounds:
+            return "Ifc" + known_compounds[rest]
+
+        # Простые имена - просто capitalize
+        return "Ifc" + rest.capitalize()
+
     def generate(self, output_path):
         """
         Сгенерировать IFC Mapping файл в формате Revit.
@@ -391,19 +453,7 @@ class IFCMappingGenerator:
                 entities = prop.get("entities", [])
                 for ent in entities:
                     # Конвертируем в правильный формат IfcXxx
-                    ifc_class = ent.upper()
-                    if ifc_class.startswith("IFC"):
-                        # Преобразуем IFCWALL -> IfcWall
-                        ifc_class = "Ifc" + ifc_class[3:].capitalize()
-                        # Обработка составных имён (IFCWALLSTANDARDCASE -> IfcWallStandardCase)
-                        if "STANDARDCASE" in ent.upper():
-                            ifc_class = "IfcWallStandardCase"
-                        elif "ELEMENTASSEMBLY" in ent.upper():
-                            ifc_class = "IfcElementAssembly"
-                        elif "BUILDINGELEMENTPROXY" in ent.upper():
-                            ifc_class = "IfcBuildingElementProxy"
-                        elif "REINFORCINGBAR" in ent.upper():
-                            ifc_class = "IfcReinforcingBar"
+                    ifc_class = self._convert_ifc_class_name(ent)
                     pset_entities[pset].add(ifc_class)
 
                 pset_props[pset].append(prop)
@@ -422,7 +472,24 @@ class IFCMappingGenerator:
             for prop in pset_props[pset]:
                 ifc_prop_name = prop["baseName"]
                 revit_param = self._apply_prefix(prop["baseName"])
-                dtype = "Text"  # Revit использует Text для большинства
+
+                # Получаем тип из IFC dataType и конвертируем в формат IFC Mapping
+                ifc_datatype = prop.get("dataType", "IFCTEXT").upper()
+                revit_type = IFC_TO_REVIT_TYPE.get(ifc_datatype, "TEXT")
+
+                # Конвертируем Revit тип в формат IFC Mapping файла
+                # IFC Mapping использует: Text, Real, Integer, Boolean, Length, Area, Volume, Angle
+                mapping_type_map = {
+                    "TEXT": "Text",
+                    "YESNO": "Boolean",
+                    "INTEGER": "Integer",
+                    "NUMBER": "Real",
+                    "LENGTH": "Length",
+                    "AREA": "Area",
+                    "VOLUME": "Volume",
+                    "ANGLE": "Angle",
+                }
+                dtype = mapping_type_map.get(revit_type, "Text")
 
                 # Формат: TAB + IFC Property Name + TAB + Type + TAB + Revit Param Name
                 lines.append("\t{}\t{}\t{}".format(ifc_prop_name, dtype, revit_param))
