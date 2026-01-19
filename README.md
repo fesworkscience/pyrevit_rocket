@@ -4,7 +4,7 @@
 
 ### Автоматизация промышленного строительства в Autodesk Revit
 
-[![Version](https://img.shields.io/badge/version-1.0.54-blue.svg)](https://github.com/fesworkscience/pyrevit_rocket/releases)
+[![Version](https://img.shields.io/badge/version-1.0.56-blue.svg)](https://github.com/fesworkscience/pyrevit_rocket/releases)
 [![pyRevit](https://img.shields.io/badge/pyRevit-5.0+-green.svg)](https://github.com/pyrevitlabs/pyRevit)
 [![Revit](https://img.shields.io/badge/Revit-2022--2025-orange.svg)](https://www.autodesk.com/products/revit)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](LICENSE)
@@ -106,6 +106,36 @@ git add . && git commit -m "Описание" && git push origin feature/my-feat
 
 ---
 
+## Авторы
+
+<table>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/fesworkscience">
+        <img src="https://github.com/fesworkscience.png" width="80px;" alt=""/><br />
+        <sub><b>Евгений Федулов</b></sub>
+      </a><br />
+      <sub>Lead Developer</sub>
+    </td>
+    <td align="center">
+      <a href="https://github.com/i-savelev">
+        <img src="https://github.com/i-savelev.png" width="80px;" alt=""/><br />
+        <sub><b>Илья Савельев</b></sub>
+      </a><br />
+      <sub>Developer</sub>
+    </td>
+    <td align="center">
+      <a href="https://github.com/synodsy">
+        <img src="https://github.com/synodsy.png" width="80px;" alt=""/><br />
+        <sub><b>Савков</b></sub>
+      </a><br />
+      <sub>Developer</sub>
+    </td>
+  </tr>
+</table>
+
+---
+
 ## Лицензия
 
 MIT — см. [LICENSE](LICENSE)
@@ -123,12 +153,6 @@ MIT — см. [LICENSE](LICENSE)
 <a href="https://t.me/tehzak2">
   <img src="https://img.shields.io/badge/Telegram-@tehzak2-26A5E4?style=for-the-badge&logo=telegram&logoColor=white" alt="Telegram">
 </a>
-
-<br><br>
-
-**Евгений Федулов** — Lead Developer
-
-[![Telegram](https://img.shields.io/badge/Написать-Telegram-26A5E4?style=flat-square&logo=telegram)](https://t.me/tehzak2)
 
 </div>
 
