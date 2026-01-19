@@ -4,7 +4,7 @@
 
 ### Автоматизация промышленного строительства в Autodesk Revit
 
-[![Version](https://img.shields.io/badge/version-1.0.53-blue.svg)](https://github.com/fesworkscience/pyrevit_rocket/releases)
+[![Version](https://img.shields.io/badge/version-1.0.54-blue.svg)](https://github.com/fesworkscience/pyrevit_rocket/releases)
 [![pyRevit](https://img.shields.io/badge/pyRevit-5.0+-green.svg)](https://github.com/pyrevitlabs/pyRevit)
 [![Revit](https://img.shields.io/badge/Revit-2022--2025-orange.svg)](https://www.autodesk.com/products/revit)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](LICENSE)
@@ -83,11 +83,14 @@ git checkout -b feature/my-feature
 
 # 2. Внести изменения...
 
-# 3. ОБЯЗАТЕЛЬНО: проверить код
-"C:/ProgramData/miniconda3/python.exe" "pyrevit.extension/lib/pyrevit_checker.py" "путь/к/script.py"
+# 3. ОБЯЗАТЕЛЬНО: проверить код чекером
+python pyrevit.extension/lib/pyrevit_checker.py pyrevit.extension/CPSK.tab/ПАНЕЛЬ/КНОПКА/script.py
 
-# 4. Коммит и PR
+# 4. Коммит и пуш
 git add . && git commit -m "Описание" && git push origin feature/my-feature
+
+# 5. Создать Pull Request
+# Перейти на https://github.com/fesworkscience/pyrevit_rocket/pulls → New pull request
 ```
 
 ### Требования к коду
