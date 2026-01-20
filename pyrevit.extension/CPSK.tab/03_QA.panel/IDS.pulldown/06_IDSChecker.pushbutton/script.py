@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-IDS Checker - проверка модели Revit на соответствие требованиям IDS.
-Вкладка 1: Проверка параметров выбранного экземпляра
-Вкладка 2: Полная проверка через IFC экспорт
+IDS Checker - проверка параметров всех элементов на виде Revit на соответствие требованиям IDS.
+Генерирует HTML-отчёт с древовидной структурой результатов.
 """
 
 __title__ = "Проверка\nIDS"
@@ -11,9 +10,7 @@ __author__ = "CPSK"
 import clr
 import os
 import sys
-import json
-import tempfile
-import subprocess
+import datetime
 import codecs
 
 clr.AddReference('System.Windows.Forms')
@@ -22,50 +19,137 @@ clr.AddReference('System.Xml')
 
 import System
 from System.Windows.Forms import (
-    Form, Label, TextBox, Button, Panel, ComboBox, ListBox, ListView,
-    ListViewItem, ColumnHeader, View, CheckBox,
-    DockStyle, FormStartPosition, FormBorderStyle,
-    DialogResult, ProgressBar, ProgressBarStyle, GroupBox, TabControl, TabPage
+    Form, Label, TextBox, Button, ProgressBar,
+    FormStartPosition, FormBorderStyle, GroupBox,
+    Application
 )
-from System.Drawing import Point, Size, Color, Font, FontStyle
+from System.Drawing import Point, Size, Color
 from System.Xml import XmlDocument, XmlNamespaceManager
 
 from pyrevit import revit, forms, script
 
-# Добавляем lib в путь для импорта cpsk_config
+# Добавляем lib и support_files в путь для импорта
 SCRIPT_DIR = os.path.dirname(__file__)
-LIB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))), "lib")
+EXTENSION_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR))))
+LIB_DIR = os.path.join(EXTENSION_DIR, "lib")
+SUPPORT_DIR = os.path.join(EXTENSION_DIR, "support_files")
+
 if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
+if SUPPORT_DIR not in sys.path:
+    sys.path.insert(0, SUPPORT_DIR)
 
 # Импорт модулей из lib
-from cpsk_notify import show_error, show_warning, show_info, show_success
+from cpsk_notify import show_error, show_warning, show_info
 from cpsk_auth import require_auth
-from cpsk_config import require_environment, get_venv_python, get_clean_env
+from cpsk_logger import Logger
+
+# Импорт маппинга IFC -> Revit категорий
+from ifc_mappings import IFC_TO_REVIT_CATEGORY_IDS
+
+# Имя скрипта для логирования
+SCRIPT_NAME = "IDSChecker"
 
 # Проверка авторизации
 if not require_auth():
     sys.exit()
 
-# Проверка окружения
-if not require_environment():
-    sys.exit()
+# Инициализация логгера
+Logger.init(SCRIPT_NAME)
+Logger.info(SCRIPT_NAME, "Скрипт запущен")
 
 # Revit API
-from Autodesk.Revit.DB import Transaction, FilteredElementCollector, BuiltInParameter, ElementId, TemporaryViewMode
-from System.Collections.Generic import List
+from Autodesk.Revit.DB import FilteredElementCollector, ElementId, BuiltInCategory
 
 # === НАСТРОЙКИ ===
 
 doc = revit.doc
 uidoc = revit.uidoc
-app = doc.Application
 output = script.get_output()
 
-IDS_CHECKER_SCRIPT = os.path.join(LIB_DIR, "ids_checker.py")
 
-# Используем Python из установленного окружения
-VENV_PYTHON = get_venv_python()
+# === ОБРАТНЫЙ МАППИНГ КАТЕГОРИЙ ===
+
+class ReverseCategoryMapper:
+    """Обратный маппинг BuiltInCategory ID -> IFC классы."""
+
+    def __init__(self):
+        self._reverse_map = {}
+        self._build_reverse_map()
+
+    def _build_reverse_map(self):
+        """Построить обратный маппинг из IFC_TO_REVIT_CATEGORY_IDS."""
+        for ifc_class, categories in IFC_TO_REVIT_CATEGORY_IDS.items():
+            # Пропускаем TYPE классы - нас интересуют только экземпляры
+            if ifc_class.endswith("TYPE"):
+                continue
+            for cat_name, cat_id in categories:
+                if cat_id not in self._reverse_map:
+                    self._reverse_map[cat_id] = []
+                if ifc_class not in self._reverse_map[cat_id]:
+                    self._reverse_map[cat_id].append(ifc_class)
+
+    def get_ifc_classes(self, category_id):
+        """Получить список IFC классов для данной категории Revit."""
+        return self._reverse_map.get(category_id, [])
+
+    def get_all_category_ids(self):
+        """Получить все ID категорий, которые имеют маппинг."""
+        return list(self._reverse_map.keys())
+
+
+# === ПАРСЕР ФАЙЛА МЭППИНГА ПАРАМЕТРОВ ===
+
+class MappingParser:
+    """Парсер файла мэппинга параметров IFC -> Revit."""
+
+    def __init__(self):
+        self.param_mapping = {}  # IFC_param_name -> Revit_param_name
+        self.property_sets = {}  # PropertySet name -> list of params
+
+    def parse(self, path):
+        """Парсить файл мэппинга."""
+        if not os.path.exists(path):
+            raise IOError("Файл мэппинга не найден: {}".format(path))
+
+        current_pset = None
+
+        with codecs.open(path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.rstrip('\r\n')
+
+                # Пустая строка - конец PropertySet
+                if not line.strip():
+                    current_pset = None
+                    continue
+
+                # Строка PropertySet
+                if line.startswith("PropertySet:"):
+                    parts = line.split('\t')
+                    if len(parts) >= 2:
+                        current_pset = parts[1].strip()
+                        self.property_sets[current_pset] = []
+                    continue
+
+                # Строка параметра (начинается с табуляции)
+                if line.startswith('\t') and current_pset:
+                    parts = line.split('\t')
+                    # Формат: \t<IFC Name>\t<Type>\t<Revit Param Name>
+                    if len(parts) >= 4:
+                        ifc_name = parts[1].strip()
+                        revit_name = parts[3].strip()
+                        if ifc_name and revit_name:
+                            self.param_mapping[ifc_name] = revit_name
+                            self.property_sets[current_pset].append({
+                                "ifc_name": ifc_name,
+                                "revit_name": revit_name
+                            })
+
+        return self
+
+    def get_revit_param_name(self, ifc_name):
+        """Получить имя параметра Revit по имени IFC."""
+        return self.param_mapping.get(ifc_name, ifc_name)
 
 
 # === ПАРСЕР IDS ===
@@ -73,7 +157,6 @@ VENV_PYTHON = get_venv_python()
 class IDSParser:
     """Парсер IDS файла для извлечения типов и параметров (baseName!)."""
 
-    # Атрибуты класса - сохраняем ссылки на уровне класса
     _XmlDocument = XmlDocument
     _XmlNamespaceManager = XmlNamespaceManager
 
@@ -108,18 +191,16 @@ class IDSParser:
         spec = {
             "name": spec_node.GetAttribute("name") or "",
             "applicability": [],
-            "predefinedTypes": [],  # predefinedType из applicability
-            "requirements": []  # Параметры (property/baseName) из requirements
+            "predefinedTypes": [],
+            "requirements": []
         }
 
-        # Applicability - к каким элементам применяется (entity/name)
-        # Может быть несколько entity в enumeration (IFCWALL, IFCWALLTYPE)
+        # Applicability - к каким элементам применяется
         app_nodes = spec_node.SelectNodes("ids:applicability/ids:entity/ids:name", nsm)
         for app_node in app_nodes:
             entities = self._get_all_node_values(app_node, nsm)
             for entity in entities:
                 if entity:
-                    # Фильтруем *TYPE классы
                     upper_entity = entity.upper()
                     if not upper_entity.endswith("TYPE"):
                         spec["applicability"].append(upper_entity)
@@ -129,11 +210,10 @@ class IDSParser:
         if pred_node:
             pred_values = self._get_all_enum_values(pred_node, nsm)
             if pred_values:
-                # Фильтруем USERDEFINED и NOTDEFINED
                 filtered = [v for v in pred_values if v not in ("USERDEFINED", "NOTDEFINED")]
                 spec["predefinedTypes"] = filtered
 
-        # Requirements - параметры (property с baseName!)
+        # Requirements - параметры
         req_nodes = spec_node.SelectNodes("ids:requirements/ids:property", nsm)
         for req_node in req_nodes:
             prop = self._parse_property(req_node, nsm)
@@ -145,7 +225,6 @@ class IDSParser:
     def _get_all_enum_values(self, node, nsm):
         """Получить все значения enumeration из узла."""
         values = []
-        # Ищем xs:enumeration через все дочерние элементы
         for child in node.ChildNodes:
             if child.LocalName == "restriction":
                 for enum_node in child.ChildNodes:
@@ -156,23 +235,21 @@ class IDSParser:
         return values if values else None
 
     def _get_node_value(self, node, nsm):
-        """Получить значение узла (simpleValue или первое enumeration)."""
+        """Получить значение узла."""
         values = self._get_all_node_values(node, nsm)
         return values[0] if values else None
 
     def _get_all_node_values(self, node, nsm):
-        """Получить все значения узла (simpleValue или все enumeration)."""
+        """Получить все значения узла."""
         if node is None:
             return []
 
         values = []
 
-        # Попробовать simpleValue
         simple = node.SelectSingleNode("ids:simpleValue", nsm)
         if simple:
             return [simple.InnerText]
 
-        # Попробовать enumeration через ChildNodes (xs:restriction/xs:enumeration)
         for child in node.ChildNodes:
             if child.LocalName == "restriction":
                 for enum_node in child.ChildNodes:
@@ -184,7 +261,6 @@ class IDSParser:
         if values:
             return values
 
-        # Просто InnerText
         if node.InnerText:
             return [node.InnerText]
 
@@ -200,27 +276,22 @@ class IDSParser:
             "enumeration": None
         }
 
-        # PropertySet
         pset_node = prop_node.SelectSingleNode("ids:propertySet", nsm)
         if pset_node:
             prop["propertySet"] = self._get_node_value(pset_node, nsm) or ""
 
-        # BaseName (имя параметра)
         name_node = prop_node.SelectSingleNode("ids:baseName", nsm)
         if name_node:
             prop["baseName"] = self._get_node_value(name_node, nsm) or ""
 
-        # DataType
         datatype_attr = prop_node.GetAttribute("dataType")
         if datatype_attr:
             prop["dataType"] = datatype_attr.upper()
 
-        # Cardinality (required/optional)
         cardinality = prop_node.GetAttribute("cardinality")
         if cardinality:
             prop["cardinality"] = cardinality
 
-        # Enumeration (допустимые значения)
         enum_nodes = prop_node.SelectNodes("ids:value/ids:restriction/ids:enumeration", nsm)
         if enum_nodes and enum_nodes.Count > 0:
             enums = []
@@ -234,21 +305,18 @@ class IDSParser:
         return prop if prop["baseName"] else None
 
     def _collect_entity_params(self):
-        """Собрать параметры и predefinedTypes по типам IFC."""
+        """Собрать параметры по типам IFC."""
         for spec in self.specifications:
             for entity in spec["applicability"]:
-                # Инициализация
                 if entity not in self.entity_params:
                     self.entity_params[entity] = []
                 if entity not in self.entity_predefined_types:
                     self.entity_predefined_types[entity] = []
 
-                # Собрать predefinedTypes
                 for ptype in spec.get("predefinedTypes", []):
                     if ptype not in self.entity_predefined_types[entity]:
                         self.entity_predefined_types[entity].append(ptype)
 
-                # Собрать параметры (property/baseName)
                 for prop in spec["requirements"]:
                     exists = False
                     for existing in self.entity_params[entity]:
@@ -263,60 +331,25 @@ class IDSParser:
         return sorted(self.entity_params.keys())
 
     def get_params_for_entity(self, entity):
-        """Получить параметры (baseName) для указанного типа."""
+        """Получить параметры для указанного типа."""
         return self.entity_params.get(entity, [])
 
-    def get_predefined_types_for_entity(self, entity):
-        """Получить predefinedTypes для указанного типа."""
-        return self.entity_predefined_types.get(entity, [])
+    def get_params_for_entities(self, entities):
+        """Получить объединённые параметры для нескольких типов IFC."""
+        all_params = []
+        seen_names = set()
+
+        for entity in entities:
+            params = self.entity_params.get(entity, [])
+            for param in params:
+                if param["baseName"] not in seen_names:
+                    all_params.append(param)
+                    seen_names.add(param["baseName"])
+
+        return all_params
 
 
-# === ПРОВЕРКА ПАРАМЕТРОВ ЭЛЕМЕНТА ===
-
-def check_element_params(element, required_params, prefix=""):
-    """
-    Проверить наличие параметров у элемента.
-    Возвращает список (param_name, revit_name, has_param, value).
-    """
-    results = []
-
-    for prop in required_params:
-        base_name = prop["baseName"]
-
-        # Формируем имя параметра в Revit с учётом префикса
-        if prefix:
-            revit_name = "{}_{}".format(prefix, base_name)
-        else:
-            revit_name = base_name
-
-        # Пробуем найти параметр
-        has_param = False
-        value = ""
-
-        # Сначала пробуем с префиксом
-        param = element.LookupParameter(revit_name)
-        if param:
-            has_param = True
-            value = get_param_value(param)
-        else:
-            # Пробуем без префикса
-            param = element.LookupParameter(base_name)
-            if param:
-                has_param = True
-                value = get_param_value(param)
-                revit_name = base_name
-
-        results.append({
-            "ids_name": base_name,
-            "revit_name": revit_name,
-            "has_param": has_param,
-            "value": value,
-            "required": prop["cardinality"] == "required",
-            "enumeration": prop.get("enumeration")
-        })
-
-    return results
-
+# === ПРОВЕРКА ЭЛЕМЕНТОВ ===
 
 def get_param_value(param):
     """Получить значение параметра как строку."""
@@ -342,1332 +375,644 @@ def get_param_value(param):
     return ""
 
 
-# === IFC КОНФИГУРАЦИИ ===
+class ViewElementChecker:
+    """Проверка всех элементов на виде."""
 
-def get_ifc_configurations(_doc=None):
-    """Получить список конфигураций IFC экспорта."""
-    import json as _json
-    _doc = _doc or doc
+    def __init__(self, ids_parser, mapping_parser, category_mapper):
+        self.ids_parser = ids_parser
+        self.mapping_parser = mapping_parser
+        self.category_mapper = category_mapper
+        self._doc = doc
 
-    configs = [
-        "IFC4 Reference View",
-        "IFC4 Design Transfer View",
-        "IFC 2x3 Coordination View 2.0",
-        "IFC 2x3 Coordination View",
-    ]
+    def check_view(self, view, progress_callback=None):
+        """
+        Проверить все элементы на виде.
+        Возвращает словарь: category_name -> [element_results]
+        """
+        results = {}
 
-    try:
-        from Autodesk.Revit.DB import FilteredElementCollector as FEC
-        from Autodesk.Revit.DB.ExtensibleStorage import DataStorage, Schema
+        # Собрать все элементы на виде
+        collector = FilteredElementCollector(self._doc, view.Id)
+        all_elements = list(collector.WhereElementIsNotElementType().ToElements())
 
-        storages = FEC(_doc).OfClass(DataStorage).ToElements()
+        total = len(all_elements)
+        processed = 0
 
-        for storage in storages:
-            guids = storage.GetEntitySchemaGuids()
-            for guid in guids:
-                schema = Schema.Lookup(guid)
-                if schema and "IFC" in schema.SchemaName.upper():
-                    entity = storage.GetEntity(schema)
-                    if entity and entity.IsValid():
-                        for field in schema.ListFields():
-                            if "map" in field.FieldName.lower():
-                                try:
-                                    value = entity.Get[str](field)
-                                    if value:
-                                        data = _json.loads(value)
-                                        if isinstance(data, dict) and "Name" in data:
-                                            name = data["Name"]
-                                            if name and name not in configs:
-                                                configs.append(name)
-                                except:
-                                    pass
-    except:
-        pass
+        for elem in all_elements:
+            if elem.Category is None:
+                processed += 1
+                continue
 
-    return configs
+            cat_id = elem.Category.Id.IntegerValue
+            cat_name = elem.Category.Name
 
+            # Получить IFC классы для этой категории
+            ifc_classes = self.category_mapper.get_ifc_classes(cat_id)
 
-def get_ifc_config_data(doc, config_name):
-    """Получить полные данные конфигурации IFC экспорта."""
-    import json as _json
-    try:
-        from Autodesk.Revit.DB import FilteredElementCollector as FEC
-        from Autodesk.Revit.DB.ExtensibleStorage import DataStorage, Schema
+            if not ifc_classes:
+                processed += 1
+                continue
 
-        storages = FEC(doc).OfClass(DataStorage).ToElements()
-        for storage in storages:
-            guids = storage.GetEntitySchemaGuids()
-            for guid in guids:
-                schema = Schema.Lookup(guid)
-                if schema and "IFC" in schema.SchemaName.upper():
-                    entity = storage.GetEntity(schema)
-                    if entity and entity.IsValid():
-                        for field in schema.ListFields():
-                            if "map" in field.FieldName.lower():
-                                value = entity.Get[str](field)
-                                if value:
-                                    data = _json.loads(value)
-                                    if isinstance(data, dict):
-                                        if data.get("Name") == config_name:
-                                            return data
-    except:
-        pass
-    return None
+            # Получить требования из IDS для этих классов
+            required_params = self.ids_parser.get_params_for_entities(ifc_classes)
 
+            if not required_params:
+                processed += 1
+                continue
 
-def get_ifc_version_from_user_config(doc, config_name):
-    """Получить версию IFC из пользовательской конфигурации."""
-    try:
-        from Autodesk.Revit.DB import IFCVersion
+            # Проверить элемент
+            elem_result = self._check_element(elem, required_params)
 
-        version_map = {
-            0: IFCVersion.IFC2x2,
-            1: IFCVersion.IFC2x3,
-            2: IFCVersion.IFC2x3CV2,
-            3: IFCVersion.IFC4,
-            20: IFCVersion.IFC4RV,
-            21: IFCVersion.IFC4DTV,
-        }
+            if cat_name not in results:
+                results[cat_name] = []
 
-        data = get_ifc_config_data(doc, config_name)
-        if data:
-            ifc_ver = data.get("IFCVersion", 20)
-            return version_map.get(ifc_ver, IFCVersion.IFC4RV)
-    except:
-        pass
-    return None
+            results[cat_name].append(elem_result)
 
+            processed += 1
+            if progress_callback:
+                progress_callback(processed, total)
 
-def export_to_ifc_with_config(doc, output_path, config_name=None, _os=None, _LIB_DIR=None, _get_ifc_version=None):
-    """Экспортировать модель Revit в IFC используя сохранённую конфигурацию."""
-    _os = _os or os
-    folder = _os.path.dirname(output_path)
-    filename = _os.path.splitext(_os.path.basename(output_path))[0]
+        return results
 
-    # Лог для отладки
-    log_lines = []
+    def _check_element(self, element, required_params):
+        """Проверить один элемент на соответствие требованиям."""
+        elem_id = element.Id.IntegerValue
+        elem_name = element.Name if hasattr(element, 'Name') else "Без имени"
 
-    try:
-        from Autodesk.Revit.DB import IFCExportOptions, IFCVersion, Transaction as RevitTransaction
+        param_results = []
+        passed = 0
+        failed = 0
+        optional_missing = 0
 
-        # Попробуем загрузить IFC Export toolkit для полной поддержки настроек
-        ifc_export_config = None
-        try:
-            # Ищем DLL в стандартных местах
-            ifc_dll_paths = [
-                r"C:\ProgramData\Autodesk\ApplicationPlugins\IFC 2025.bundle\Contents\2025\Revit.IFC.Export.dll",
-                r"C:\ProgramData\Autodesk\ApplicationPlugins\IFC 2024.bundle\Contents\2024\Revit.IFC.Export.dll",
-                r"C:\ProgramData\Autodesk\ApplicationPlugins\IFC 2023.bundle\Contents\2023\Revit.IFC.Export.dll",
-            ]
-            for dll_path in ifc_dll_paths:
-                if _os.path.exists(dll_path):
-                    clr.AddReferenceToFileAndPath(dll_path)
-                    log_lines.append("Loaded IFC Export DLL: {}".format(dll_path))
-                    break
+        for prop in required_params:
+            ifc_name = prop["baseName"]
+            # Получить имя параметра в Revit через мэппинг
+            revit_name = self.mapping_parser.get_revit_param_name(ifc_name)
 
-            from Revit.IFC.Export.Utility import IFCExportConfiguration
-            log_lines.append("IFC Export Configuration class loaded")
+            is_required = prop["cardinality"] == "required"
 
-            # Загружаем конфигурацию по имени
-            if config_name:
-                ifc_export_config = IFCExportConfiguration.GetInSession(config_name)
-                if ifc_export_config:
-                    log_lines.append("Loaded IFC config by name: {}".format(config_name))
-        except Exception as e:
-            log_lines.append("IFC Export toolkit not available: {}".format(str(e)))
+            # Поиск параметра
+            param = element.LookupParameter(revit_name)
+            has_param = param is not None
+            value = get_param_value(param) if has_param else ""
 
-        options = IFCExportOptions()
-
-        # Загружаем конфигурацию из сохранённых настроек
-        config_data = None
-        if config_name:
-            config_data = get_ifc_config_data(doc, config_name)
-            log_lines.append("Config '{}': {}".format(config_name, "found" if config_data else "not found"))
-
-        if config_data:
-            # Версия IFC - строим динамически чтобы избежать ошибок
-            version_map = {
-                0: IFCVersion.IFC2x2,
-                1: IFCVersion.IFC2x3,
-                2: IFCVersion.IFC2x3CV2,
-                3: IFCVersion.IFC4,
-                20: IFCVersion.IFC4RV,
-                21: IFCVersion.IFC4DTV,
-            }
-            # Пробуем добавить новые версии если они доступны
-            try:
-                version_map[4] = IFCVersion.IFCBCA
-            except:
-                pass
-            try:
-                version_map[5] = IFCVersion.IFCCOBIE
-            except:
-                pass
-            try:
-                version_map[22] = IFCVersion.IFC2x3FM
-            except:
-                pass
-            try:
-                version_map[23] = IFCVersion.IFC2x3BFM
-            except:
-                pass
-            try:
-                version_map[24] = IFCVersion.IFC4x3
-                version_map[25] = IFCVersion.IFC4x3
-            except:
-                # IFC4x3 недоступен - используем IFC4RV как fallback
-                version_map[24] = IFCVersion.IFC4RV
-                version_map[25] = IFCVersion.IFC4RV
-
-            ifc_ver = config_data.get("IFCVersion", 20)
-            if ifc_ver in version_map:
-                options.FileVersion = version_map[ifc_ver]
-                log_lines.append("IFC Version: {} -> {}".format(ifc_ver, version_map[ifc_ver]))
-            else:
-                options.FileVersion = IFCVersion.IFC4RV
-                log_lines.append("IFC Version: {} NOT FOUND, using IFC4RV".format(ifc_ver))
-
-            # Применяем только ключевые опции для маппинга
-            if config_data.get("ExportUserDefinedPsets"):
-                options.AddOption("ExportUserDefinedPsets", "true")
-                log_lines.append("ExportUserDefinedPsets: true")
-
-            psets_file = config_data.get("ExportUserDefinedPsetsFileName", "")
-            if psets_file:
-                # Проверяем существование файла маппинга
-                if _os.path.exists(psets_file):
-                    options.AddOption("ExportUserDefinedPsetsFileName", psets_file)
-                    log_lines.append("Mapping file: {} (EXISTS)".format(psets_file))
+            # Определить статус
+            if has_param and value:
+                status = "ok"
+                passed += 1
+            elif has_param and not value:
+                if is_required:
+                    status = "empty"
+                    failed += 1
                 else:
-                    log_lines.append("Mapping file: {} (NOT FOUND!)".format(psets_file))
-
-            # Только базовые опции - UseActiveViewGeometry может вызывать ошибки
-            if config_data.get("ExportIFCCommonPropertySets"):
-                options.AddOption("ExportIFCCommonPropertySets", "true")
-                log_lines.append("ExportIFCCommonPropertySets: true")
-
-            log_lines.append("Output path: {}".format(output_path))
-            log_lines.append("Folder: {}".format(folder))
-            log_lines.append("Filename: {}".format(filename))
-        else:
-            # Fallback - базовые настройки
-            options.FileVersion = IFCVersion.IFC4RV
-            log_lines.append("Using fallback IFC4RV")
-
-        # Сохраняем лог в папку скрипта
-        log_path = os.path.join(SCRIPT_DIR, "ifc_export_log.txt")
-        import codecs as _codecs
-        with _codecs.open(log_path, 'w', 'utf-8') as f:
-            f.write("\n".join(log_lines))
-            if config_data:
-                f.write("\n\nFull config:\n")
-                import json as _json
-                f.write(_json.dumps(config_data, indent=2, ensure_ascii=False))
-
-        log_lines.append("\n--- EXPORT START ---")
-
-        # Экспорт IFC требует транзакцию
-        trans = RevitTransaction(doc, "IFC Export for IDS Check")
-        trans.Start()
-        try:
-            log_lines.append("Transaction started")
-            result = doc.Export(folder, filename, options)
-            log_lines.append("Export result: {}".format(result))
-            trans.Commit()
-            log_lines.append("Transaction committed")
-
-            # Обновляем лог
-            with _codecs.open(log_path, 'w', 'utf-8') as f:
-                f.write("\n".join(log_lines))
-                if config_data:
-                    f.write("\n\nFull config:\n")
-                    import json as _json
-                    f.write(_json.dumps(config_data, indent=2, ensure_ascii=False))
-
-            if result and _os.path.exists(output_path):
-                return True, None
+                    status = "optional_empty"
+                    optional_missing += 1
             else:
-                return False, "Экспорт не создал файл. Лог: " + log_path
-        except Exception as e:
-            log_lines.append("EXPORT ERROR: {}".format(str(e)))
-            # Обновляем лог с ошибкой
-            with _codecs.open(log_path, 'w', 'utf-8') as f:
-                f.write("\n".join(log_lines))
-                if config_data:
-                    f.write("\n\nFull config:\n")
-                    import json as _json
-                    f.write(_json.dumps(config_data, indent=2, ensure_ascii=False))
-            trans.RollBack()
-            return False, str(e) + ". Лог: " + log_path
-    except Exception as e:
-        return False, str(e)
+                if is_required:
+                    status = "missing"
+                    failed += 1
+                else:
+                    status = "optional_missing"
+                    optional_missing += 1
 
+            param_results.append({
+                "ifc_name": ifc_name,
+                "revit_name": revit_name,
+                "has_param": has_param,
+                "value": value,
+                "is_required": is_required,
+                "status": status
+            })
 
-# === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
-
-def find_python(python_paths=None):
-    """Найти CPython интерпретатор."""
-    # Сначала проверяем установленное окружение
-    if os.path.exists(VENV_PYTHON):
-        return VENV_PYTHON
-    return None
-
-
-def run_ids_check(python_path, ids_path, ifc_path, report_path, _os=None, _tempfile=None, _ids_checker_script=None, standard_report_path=None):
-    """Запустить проверку IDS через внешний скрипт."""
-    import json as _json
-    import codecs as _codecs
-    import subprocess as _subprocess
-    _os = _os or os
-    _tempfile = _tempfile or tempfile
-    _ids_checker_script = _ids_checker_script or IDS_CHECKER_SCRIPT
-    try:
-        params_file = _os.path.join(_tempfile.gettempdir(), "ids_check_params.json")
-        result_file = _os.path.join(_tempfile.gettempdir(), "ids_check_result.json")
-
-        params = {
-            "ids_path": ids_path,
-            "ifc_path": ifc_path,
-            "report_path": report_path
+        return {
+            "id": elem_id,
+            "name": elem_name,
+            "params": param_results,
+            "passed": passed,
+            "failed": failed,
+            "optional_missing": optional_missing,
+            "total": len(required_params)
         }
 
-        # Добавляем путь для стандартного отчета если указан
-        if standard_report_path:
-            params["standard_report_path"] = standard_report_path
 
-        with _codecs.open(params_file, 'w', 'utf-8') as f:
-            _json.dump(params, f, ensure_ascii=False)
+# === ГЕНЕРАТОР HTML ОТЧЁТА ===
 
-        cmd = [
-            python_path,
-            _ids_checker_script,
-            "--json",
-            params_file,
-            result_file
-        ]
+class HTMLReportGenerator:
+    """Генератор HTML отчёта."""
 
-        startupinfo = _subprocess.STARTUPINFO()
-        startupinfo.dwFlags |= _subprocess.STARTF_USESHOWWINDOW
-        startupinfo.wShowWindow = 0
+    def __init__(self):
+        self.css = """
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        .info {
+            background-color: #e7f3fe;
+            border-left: 4px solid #2196F3;
+            padding: 10px;
+            margin-bottom: 20px;
+        }
+        .summary {
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .summary-item {
+            display: inline-block;
+            margin-right: 30px;
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+        .summary-ok { background-color: #dff0d8; color: #3c763d; }
+        .summary-fail { background-color: #f2dede; color: #a94442; }
+        .summary-total { background-color: #d9edf7; color: #31708f; }
+        details {
+            margin: 5px 0;
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #fff;
+        }
+        details details {
+            margin-left: 20px;
+            background-color: #fafafa;
+        }
+        details details details {
+            background-color: #fff;
+            border: none;
+            border-left: 2px solid #ddd;
+        }
+        summary {
+            cursor: pointer;
+            padding: 8px;
+            font-weight: bold;
+            outline: none;
+        }
+        summary:hover {
+            background-color: #f0f0f0;
+        }
+        .category-summary {
+            font-size: 16px;
+        }
+        .element-summary {
+            font-size: 14px;
+        }
+        .ok { color: #3c763d; }
+        .fail { color: #a94442; }
+        .optional { color: #8a6d3b; }
+        .param-list {
+            list-style: none;
+            padding-left: 20px;
+            margin: 5px 0;
+        }
+        .param-item {
+            padding: 3px 0;
+            font-size: 13px;
+        }
+        .param-name { font-weight: bold; }
+        .param-value { color: #666; font-style: italic; }
+        .status-icon { margin-right: 5px; }
+        """
 
-        # Очищаем переменные окружения IronPython для корректной работы CPython
-        clean_env = get_clean_env()
+    def generate(self, results, view_name):
+        """Генерировать HTML отчёт."""
+        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        process = _subprocess.Popen(
-            cmd,
-            stdout=_subprocess.PIPE,
-            stderr=_subprocess.PIPE,
-            startupinfo=startupinfo,
-            env=clean_env
-        )
+        # Подсчёт общей статистики
+        total_elements = 0
+        total_ok = 0
+        total_fail = 0
 
-        stdout, stderr = process.communicate()
+        for cat_name, elements in results.items():
+            for elem in elements:
+                total_elements += 1
+                if elem["failed"] == 0:
+                    total_ok += 1
+                else:
+                    total_fail += 1
 
-        if _os.path.exists(result_file):
-            with _codecs.open(result_file, 'r', 'utf-8') as f:
-                return _json.load(f)
+        html = []
+        html.append("<!DOCTYPE html>")
+        html.append("<html>")
+        html.append("<head>")
+        html.append('<meta charset="utf-8">')
+        html.append("<title>IDS Check Report</title>")
+        html.append("<style>{}</style>".format(self.css))
+        html.append("</head>")
+        html.append("<body>")
 
-        output_text = stdout.decode('utf-8', errors='ignore').strip()
-        if output_text:
-            try:
-                return _json.loads(output_text)
-            except:
-                return {"success": False, "errors": ["Ошибка парсинга: " + output_text]}
+        html.append("<h1>IDS Check Report</h1>")
 
-        return {"success": False, "errors": ["Пустой ответ: " + stderr.decode('utf-8', errors='ignore')]}
+        html.append('<div class="info">')
+        html.append("<strong>Вид:</strong> {} | ".format(view_name))
+        html.append("<strong>Дата:</strong> {} | ".format(now))
+        html.append("<strong>Категорий:</strong> {}".format(len(results)))
+        html.append("</div>")
 
-    except Exception as e:
-        return {"success": False, "errors": ["Ошибка: " + str(e)]}
+        html.append('<div class="summary">')
+        html.append('<span class="summary-item summary-total">Всего элементов: {}</span>'.format(total_elements))
+        html.append('<span class="summary-item summary-ok">Прошли проверку: {}</span>'.format(total_ok))
+        html.append('<span class="summary-item summary-fail">Не прошли: {}</span>'.format(total_fail))
+        html.append("</div>")
+
+        # Сортируем категории по имени
+        for cat_name in sorted(results.keys()):
+            elements = results[cat_name]
+            cat_ok = sum(1 for e in elements if e["failed"] == 0)
+            cat_fail = len(elements) - cat_ok
+
+            cat_class = "ok" if cat_fail == 0 else "fail"
+
+            html.append("<details>")
+            html.append('<summary class="category-summary {}">'.format(cat_class))
+            html.append("{} ({} элементов) - ".format(cat_name, len(elements)))
+            html.append('<span class="ok">{} OK</span>, '.format(cat_ok))
+            html.append('<span class="fail">{} Failed</span>'.format(cat_fail))
+            html.append("</summary>")
+
+            # Сортируем элементы: сначала с ошибками
+            sorted_elements = sorted(elements, key=lambda e: (e["failed"] == 0, e["id"]))
+
+            for elem in sorted_elements:
+                elem_class = "ok" if elem["failed"] == 0 else "fail"
+                status_icon = "&#10004;" if elem["failed"] == 0 else "&#10008;"
+
+                html.append("<details>")
+                html.append('<summary class="element-summary {}">'.format(elem_class))
+                html.append('<span class="status-icon">{}</span>'.format(status_icon))
+                html.append("ID: {} - {} ".format(elem["id"], elem["name"]))
+                html.append("({}/{} параметров)".format(elem["passed"], elem["total"]))
+                html.append("</summary>")
+
+                html.append('<ul class="param-list">')
+                # Сортируем параметры: сначала с ошибками
+                sorted_params = sorted(elem["params"], key=lambda p: (p["status"] == "ok", p["revit_name"]))
+
+                for param in sorted_params:
+                    if param["status"] == "ok":
+                        p_class = "ok"
+                        p_icon = "&#10004;"
+                    elif param["status"] in ("missing", "empty"):
+                        p_class = "fail"
+                        p_icon = "&#10008;"
+                    else:
+                        p_class = "optional"
+                        p_icon = "&#9888;"
+
+                    html.append('<li class="param-item {}">'.format(p_class))
+                    html.append('<span class="status-icon">{}</span>'.format(p_icon))
+                    html.append('<span class="param-name">{}</span>: '.format(param["revit_name"]))
+                    if param["value"]:
+                        html.append('<span class="param-value">"{}"</span>'.format(param["value"]))
+                    else:
+                        html.append('<span class="param-value">(пусто)</span>')
+                    html.append("</li>")
+
+                html.append("</ul>")
+                html.append("</details>")
+
+            html.append("</details>")
+
+        html.append("</body>")
+        html.append("</html>")
+
+        return "\n".join(html)
+
+    def save(self, path, content):
+        """Сохранить HTML в файл."""
+        with codecs.open(path, 'w', encoding='utf-8') as f:
+            f.write(content)
 
 
 # === ГЛАВНОЕ ОКНО ===
 
 class IDSCheckerForm(Form):
-    """Диалог проверки IDS с вкладками."""
+    """Диалог проверки параметров элементов на соответствие IDS."""
 
-    # Атрибуты класса - сохраняем ссылки на уровне класса
-    _ListViewItem = ListViewItem
-    _FilteredElementCollector = FilteredElementCollector
-    _List_ElementId = List[ElementId]
-    _TemporaryViewMode = TemporaryViewMode
-    _ProgressBarStyle = ProgressBarStyle
-    _System = System
-    _VENV_PYTHON = VENV_PYTHON
-    _IDS_CHECKER_SCRIPT = IDS_CHECKER_SCRIPT
-    _get_param_value = staticmethod(get_param_value)
-    _find_python = staticmethod(find_python)
-    _run_ids_check = staticmethod(run_ids_check)
-    # cpsk_notify functions
     _show_error = staticmethod(show_error)
     _show_warning = staticmethod(show_warning)
     _show_info = staticmethod(show_info)
-    _show_success = staticmethod(show_success)
 
     def __init__(self):
         self.ids_path = None
-        self.ifc_path = None  # Путь к IFC файлу для проверки
+        self.mapping_path = None
         self.ids_parser = None
-        self.report_path = None  # CPSK отчет
-        self.standard_report_path = None  # Стандартный отчет ifctester
-        self.result = None
-        self.ifc_configs = []
-        # Сохраняем ссылки на модули (для доступа внутри методов)
+        self.mapping_parser = None
+        self.category_mapper = ReverseCategoryMapper()
+        self.check_results = None
+        self.html_content = None
+
         self._forms = forms
         self._os = os
-        self._tempfile = tempfile
-        self._revit = revit
-        self._LIB_DIR = LIB_DIR
         self._doc = doc
-        self._uidoc = uidoc
         self._Color = Color
-        self._IDSParser = IDSParser
+
         self.setup_form()
 
     def setup_form(self):
         """Настройка формы."""
-        self.Text = "IDS Checker - Проверка модели"
-        self.Width = 650
-        self.Height = 660
+        self.Text = "IDS Checker - Проверка элементов на виде"
+        self.Width = 550
+        self.Height = 340
         self.StartPosition = FormStartPosition.CenterScreen
-        self.FormBorderStyle = FormBorderStyle.Sizable
-        self.MaximizeBox = True
+        self.FormBorderStyle = FormBorderStyle.FixedDialog
+        self.MaximizeBox = False
         self.MinimizeBox = True
-        self.TopMost = True  # Окно поверх Revit
+        self.TopMost = True
 
-        # === IDS файл (общий для обеих вкладок) ===
+        y = 15
+
+        # === IDS файл ===
         grp_ids = GroupBox()
         grp_ids.Text = "IDS файл"
-        grp_ids.Location = Point(15, 10)
-        grp_ids.Size = Size(605, 55)
+        grp_ids.Location = Point(15, y)
+        grp_ids.Size = Size(505, 55)
 
         self.txt_ids = TextBox()
         self.txt_ids.Location = Point(15, 22)
-        self.txt_ids.Width = 480
+        self.txt_ids.Width = 395
         self.txt_ids.ReadOnly = True
         grp_ids.Controls.Add(self.txt_ids)
 
-        self.btn_browse = Button()
-        self.btn_browse.Text = "Обзор..."
-        self.btn_browse.Location = Point(505, 20)
-        self.btn_browse.Width = 85
-        self.btn_browse.Click += self.on_browse_click
-        grp_ids.Controls.Add(self.btn_browse)
+        self.btn_browse_ids = Button()
+        self.btn_browse_ids.Text = "Обзор..."
+        self.btn_browse_ids.Location = Point(420, 20)
+        self.btn_browse_ids.Width = 75
+        self.btn_browse_ids.Click += self.on_browse_ids
+        grp_ids.Controls.Add(self.btn_browse_ids)
 
         self.Controls.Add(grp_ids)
-
-        # === TabControl ===
-        self.tabs = TabControl()
-        self.tabs.Location = Point(15, 75)
-        self.tabs.Size = Size(605, 495)
-
-        # Вкладка 1: Проверка экземпляра
-        self.tab_instance = TabPage()
-        self.tab_instance.Text = "Проверка экземпляра"
-        self.setup_tab_instance()
-        self.tabs.TabPages.Add(self.tab_instance)
-
-        # Вкладка 2: Полная проверка IFC
-        self.tab_ifc = TabPage()
-        self.tab_ifc.Text = "Проверка через IFC"
-        self.setup_tab_ifc()
-        self.tabs.TabPages.Add(self.tab_ifc)
-
-        self.Controls.Add(self.tabs)
-
-        # Кнопка Закрыть
-        btn_close = Button()
-        btn_close.Text = "Закрыть"
-        btn_close.Location = Point(545, 580)
-        btn_close.Size = Size(75, 28)
-        btn_close.Click += self.on_close_click
-        self.Controls.Add(btn_close)
-
-    def setup_tab_instance(self):
-        """Настройка вкладки проверки экземпляра."""
-        y = 10
-
-        # Строка 1: Тип IFC и PredefinedType
-        lbl_entity = Label()
-        lbl_entity.Text = "Тип IFC:"
-        lbl_entity.Location = Point(15, y + 3)
-        lbl_entity.AutoSize = True
-        self.tab_instance.Controls.Add(lbl_entity)
-
-        self.cmb_entity = ComboBox()
-        self.cmb_entity.Location = Point(70, y)
-        self.cmb_entity.Width = 150
-        self.cmb_entity.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDown
-        self.cmb_entity.AutoCompleteMode = System.Windows.Forms.AutoCompleteMode.SuggestAppend
-        self.cmb_entity.AutoCompleteSource = System.Windows.Forms.AutoCompleteSource.ListItems
-        self.cmb_entity.SelectedIndexChanged += self.on_entity_changed
-        self.tab_instance.Controls.Add(self.cmb_entity)
-
-        lbl_predefined = Label()
-        lbl_predefined.Text = "Подтип:"
-        lbl_predefined.Location = Point(230, y + 3)
-        lbl_predefined.AutoSize = True
-        self.tab_instance.Controls.Add(lbl_predefined)
-
-        self.cmb_predefined = ComboBox()
-        self.cmb_predefined.Location = Point(285, y)
-        self.cmb_predefined.Width = 150
-        self.cmb_predefined.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDown
-        self.cmb_predefined.AutoCompleteMode = System.Windows.Forms.AutoCompleteMode.SuggestAppend
-        self.cmb_predefined.AutoCompleteSource = System.Windows.Forms.AutoCompleteSource.ListItems
-        self.tab_instance.Controls.Add(self.cmb_predefined)
-
-        # Префикс параметров
-        lbl_prefix = Label()
-        lbl_prefix.Text = "Префикс:"
-        lbl_prefix.Location = Point(445, y + 3)
-        lbl_prefix.AutoSize = True
-        self.tab_instance.Controls.Add(lbl_prefix)
-
-        self.txt_prefix = TextBox()
-        self.txt_prefix.Location = Point(500, y)
-        self.txt_prefix.Width = 80
-        self.txt_prefix.Text = ""
-        self.txt_prefix.TextChanged += self.on_prefix_changed
-        self.tab_instance.Controls.Add(self.txt_prefix)
-
-        y += 28
-
-        # Строка 2: Выбранный элемент и кнопки
-        lbl_selected = Label()
-        lbl_selected.Text = "Элемент:"
-        lbl_selected.Location = Point(15, y + 3)
-        lbl_selected.AutoSize = True
-        self.tab_instance.Controls.Add(lbl_selected)
-
-        self.lbl_element_info = Label()
-        self.lbl_element_info.Text = "Выделите элемент в Revit"
-        self.lbl_element_info.Location = Point(70, y + 3)
-        self.lbl_element_info.Size = Size(350, 18)
-        self.lbl_element_info.ForeColor = Color.Gray
-        self.tab_instance.Controls.Add(self.lbl_element_info)
-
-        self.btn_refresh = Button()
-        self.btn_refresh.Text = "Обновить"
-        self.btn_refresh.Location = Point(430, y)
-        self.btn_refresh.Width = 70
-        self.btn_refresh.Click += self.on_refresh_selection
-        self.tab_instance.Controls.Add(self.btn_refresh)
-
-        self.btn_check_instance = Button()
-        self.btn_check_instance.Text = "Проверить"
-        self.btn_check_instance.Location = Point(505, y)
-        self.btn_check_instance.Width = 75
-        self.btn_check_instance.Click += self.on_check_instance
-        self.btn_check_instance.Enabled = False
-        self.tab_instance.Controls.Add(self.btn_check_instance)
-
-        y += 28
-
-        # Строка 3: Заголовок списка и кнопки выбора
-        lbl_params = Label()
-        lbl_params.Text = "Параметры для проверки (baseName из IDS):"
-        lbl_params.Location = Point(15, y)
-        lbl_params.AutoSize = True
-        self.tab_instance.Controls.Add(lbl_params)
-
-        self.btn_select_all = Button()
-        self.btn_select_all.Text = "Все"
-        self.btn_select_all.Location = Point(455, y - 3)
-        self.btn_select_all.Width = 55
-        self.btn_select_all.Click += self.on_select_all
-        self.tab_instance.Controls.Add(self.btn_select_all)
-
-        self.btn_select_none = Button()
-        self.btn_select_none.Text = "Снять"
-        self.btn_select_none.Location = Point(515, y - 3)
-        self.btn_select_none.Width = 60
-        self.btn_select_none.Click += self.on_select_none
-        self.tab_instance.Controls.Add(self.btn_select_none)
-
-        y += 22
-
-        # ListView для параметров с CheckBoxes
-        self.list_params = ListView()
-        self.list_params.Location = Point(15, y)
-        self.list_params.Size = Size(565, 320)
-        self.list_params.View = View.Details
-        self.list_params.FullRowSelect = True
-        self.list_params.GridLines = True
-        self.list_params.CheckBoxes = True
-        self.list_params.DoubleClick += self.on_list_double_click
-
-        col1 = ColumnHeader()
-        col1.Text = "baseName (IDS)"
-        col1.Width = 120
-
-        col2 = ColumnHeader()
-        col2.Text = "Имя в Revit"
-        col2.Width = 110
-
-        col3 = ColumnHeader()
-        col3.Text = "Обяз."
-        col3.Width = 40
-
-        col4 = ColumnHeader()
-        col4.Text = "Есть"
-        col4.Width = 35
-
-        col5 = ColumnHeader()
-        col5.Text = "Значение"
-        col5.Width = 90
-
-        col6 = ColumnHeader()
-        col6.Text = "С парам."
-        col6.Width = 60
-
-        col7 = ColumnHeader()
-        col7.Text = "Со знач."
-        col7.Width = 60
-
-        self.list_params.Columns.Add(col1)
-        self.list_params.Columns.Add(col2)
-        self.list_params.Columns.Add(col3)
-        self.list_params.Columns.Add(col4)
-        self.list_params.Columns.Add(col5)
-        self.list_params.Columns.Add(col6)
-        self.list_params.Columns.Add(col7)
-
-        self.tab_instance.Controls.Add(self.list_params)
-
-        y += 328
-
-        # Кнопки фильтрации элементов на виде
-        lbl_filter = Label()
-        lbl_filter.Text = "Фильтр (2x клик на строку или кнопки):"
-        lbl_filter.Location = Point(15, y + 3)
-        lbl_filter.AutoSize = True
-        self.tab_instance.Controls.Add(lbl_filter)
-
-        self.btn_filter_has_param = Button()
-        self.btn_filter_has_param.Text = "С парам."
-        self.btn_filter_has_param.Location = Point(250, y)
-        self.btn_filter_has_param.Width = 70
-        self.btn_filter_has_param.Click += self.on_filter_has_param
-        self.tab_instance.Controls.Add(self.btn_filter_has_param)
-
-        self.btn_filter_by_value = Button()
-        self.btn_filter_by_value.Text = "Со знач."
-        self.btn_filter_by_value.Location = Point(325, y)
-        self.btn_filter_by_value.Width = 70
-        self.btn_filter_by_value.Click += self.on_filter_by_value
-        self.tab_instance.Controls.Add(self.btn_filter_by_value)
-
-        self.btn_filter_missing = Button()
-        self.btn_filter_missing.Text = "Без парам."
-        self.btn_filter_missing.Location = Point(400, y)
-        self.btn_filter_missing.Width = 75
-        self.btn_filter_missing.Click += self.on_filter_missing
-        self.tab_instance.Controls.Add(self.btn_filter_missing)
-
-        self.btn_show_all = Button()
-        self.btn_show_all.Text = "Все"
-        self.btn_show_all.Location = Point(480, y)
-        self.btn_show_all.Width = 50
-        self.btn_show_all.Click += self.on_show_all
-        self.tab_instance.Controls.Add(self.btn_show_all)
-
-        y += 28
-
-        # Статус
-        self.lbl_instance_status = Label()
-        self.lbl_instance_status.Text = "Выберите IDS файл для начала"
-        self.lbl_instance_status.Location = Point(15, y)
-        self.lbl_instance_status.Size = Size(565, 20)
-        self.tab_instance.Controls.Add(self.lbl_instance_status)
-
-    def setup_tab_ifc(self):
-        """Настройка вкладки полной проверки IFC."""
-        y = 10
-
-        # Информация об исправлениях
-        grp_info = GroupBox()
-        grp_info.Text = "CPSK: исправления ifctester (GitHub #4661)"
-        grp_info.Location = Point(15, y)
-        grp_info.Size = Size(560, 55)
-
-        info_text = "Fix: Entity Restriction, *TYPE filter, USERDEFINED/NOTDEFINED filter, HTML reporter"
-        lbl_info = Label()
-        lbl_info.Text = info_text
-        lbl_info.Location = Point(15, 18)
-        lbl_info.Size = Size(420, 18)
-        lbl_info.ForeColor = Color.FromArgb(80, 80, 80)
-        grp_info.Controls.Add(lbl_info)
-
-        # Кнопка-ссылка на GitHub issue
-        self.btn_github = Button()
-        self.btn_github.Text = "GitHub #4661"
-        self.btn_github.Location = Point(445, 16)
-        self.btn_github.Size = Size(100, 22)
-        self.btn_github.Click += self.on_github_click
-        grp_info.Controls.Add(self.btn_github)
-
-        self.tab_ifc.Controls.Add(grp_info)
-
-        y += 62
-
-        # Шаг 1: Экспорт IFC
-        grp_export = GroupBox()
-        grp_export.Text = "Шаг 1: Экспорт IFC из Revit"
-        grp_export.Location = Point(15, y)
-        grp_export.Size = Size(560, 50)
-
-        lbl_export_info = Label()
-        lbl_export_info.Text = "Экспортируйте модель в IFC через стандартное окно Revit"
-        lbl_export_info.Location = Point(15, 20)
-        lbl_export_info.Size = Size(350, 20)
-        grp_export.Controls.Add(lbl_export_info)
-
-        self.btn_open_export = Button()
-        self.btn_open_export.Text = "Экспорт IFC..."
-        self.btn_open_export.Location = Point(450, 18)
-        self.btn_open_export.Size = Size(95, 25)
-        self.btn_open_export.Click += self.on_open_ifc_export_click
-        grp_export.Controls.Add(self.btn_open_export)
-
-        self.tab_ifc.Controls.Add(grp_export)
-
-        y += 58
-
-        # Шаг 2: Выбор IFC файла
-        grp_ifc = GroupBox()
-        grp_ifc.Text = "Шаг 2: Выберите IFC файл для проверки"
-        grp_ifc.Location = Point(15, y)
-        grp_ifc.Size = Size(560, 55)
-
-        self.txt_ifc = TextBox()
-        self.txt_ifc.Location = Point(15, 22)
-        self.txt_ifc.Width = 440
-        self.txt_ifc.ReadOnly = True
-        grp_ifc.Controls.Add(self.txt_ifc)
-
-        self.btn_browse_ifc = Button()
-        self.btn_browse_ifc.Text = "Обзор..."
-        self.btn_browse_ifc.Location = Point(465, 20)
-        self.btn_browse_ifc.Width = 80
-        self.btn_browse_ifc.Click += self.on_browse_ifc_click
-        grp_ifc.Controls.Add(self.btn_browse_ifc)
-
-        self.tab_ifc.Controls.Add(grp_ifc)
-
-        y += 70
-
-        # Статус и результаты
-        grp_status = GroupBox()
-        grp_status.Text = "Шаг 3: Результаты проверки"
-        grp_status.Location = Point(15, y)
-        grp_status.Size = Size(560, 130)
-
-        self.lbl_ifc_status = Label()
-        self.lbl_ifc_status.Text = "Выберите IDS и IFC файлы для начала проверки"
-        self.lbl_ifc_status.Location = Point(15, 25)
-        self.lbl_ifc_status.Size = Size(530, 20)
-        grp_status.Controls.Add(self.lbl_ifc_status)
-
-        self.progress = ProgressBar()
-        self.progress.Location = Point(15, 50)
-        self.progress.Size = Size(530, 18)
-        self.progress.Visible = False
-        grp_status.Controls.Add(self.progress)
-
-        self.lbl_result = Label()
-        self.lbl_result.Text = ""
-        self.lbl_result.Location = Point(15, 75)
-        self.lbl_result.Size = Size(530, 45)
-        grp_status.Controls.Add(self.lbl_result)
-
-        self.tab_ifc.Controls.Add(grp_status)
-
-        y += 145
-
-        # Чекбокс для стандартного отчета
-        self.chk_standard_report = CheckBox()
-        self.chk_standard_report.Text = "Также создать стандартный отчет ifctester (для сравнения)"
-        self.chk_standard_report.Location = Point(15, y)
-        self.chk_standard_report.Size = Size(400, 20)
-        self.chk_standard_report.Checked = False
-        self.tab_ifc.Controls.Add(self.chk_standard_report)
-
-        y += 28
-
-        # Кнопки
-        self.btn_check_ifc = Button()
-        self.btn_check_ifc.Text = "Запустить проверку"
-        self.btn_check_ifc.Location = Point(15, y)
-        self.btn_check_ifc.Size = Size(140, 32)
-        self.btn_check_ifc.Click += self.on_check_ifc_click
-        self.btn_check_ifc.Enabled = False
-        self.tab_ifc.Controls.Add(self.btn_check_ifc)
-
-        self.btn_open = Button()
-        self.btn_open.Text = "CPSK отчет"
-        self.btn_open.Location = Point(165, y)
-        self.btn_open.Size = Size(100, 32)
-        self.btn_open.Click += self.on_open_click
-        self.btn_open.Enabled = False
-        self.tab_ifc.Controls.Add(self.btn_open)
-
-        self.btn_open_std = Button()
-        self.btn_open_std.Text = "Станд. отчет"
-        self.btn_open_std.Location = Point(275, y)
-        self.btn_open_std.Size = Size(100, 32)
-        self.btn_open_std.Click += self.on_open_std_click
-        self.btn_open_std.Enabled = False
-        self.tab_ifc.Controls.Add(self.btn_open_std)
+        y += 65
+
+        # === Файл мэппинга ===
+        grp_mapping = GroupBox()
+        grp_mapping.Text = "Файл мэппинга параметров"
+        grp_mapping.Location = Point(15, y)
+        grp_mapping.Size = Size(505, 55)
+
+        self.txt_mapping = TextBox()
+        self.txt_mapping.Location = Point(15, 22)
+        self.txt_mapping.Width = 395
+        self.txt_mapping.ReadOnly = True
+        grp_mapping.Controls.Add(self.txt_mapping)
+
+        self.btn_browse_mapping = Button()
+        self.btn_browse_mapping.Text = "Обзор..."
+        self.btn_browse_mapping.Location = Point(420, 20)
+        self.btn_browse_mapping.Width = 75
+        self.btn_browse_mapping.Click += self.on_browse_mapping
+        grp_mapping.Controls.Add(self.btn_browse_mapping)
+
+        self.Controls.Add(grp_mapping)
+        y += 65
+
+        # === Прогресс и статус ===
+        grp_progress = GroupBox()
+        grp_progress.Text = "Проверка"
+        grp_progress.Location = Point(15, y)
+        grp_progress.Size = Size(505, 85)
+
+        self.progress_bar = ProgressBar()
+        self.progress_bar.Location = Point(15, 25)
+        self.progress_bar.Size = Size(480, 23)
+        self.progress_bar.Minimum = 0
+        self.progress_bar.Maximum = 100
+        grp_progress.Controls.Add(self.progress_bar)
+
+        self.lbl_status = Label()
+        self.lbl_status.Text = "Загрузите IDS и файл мэппинга для начала"
+        self.lbl_status.Location = Point(15, 55)
+        self.lbl_status.Size = Size(480, 20)
+        grp_progress.Controls.Add(self.lbl_status)
+
+        self.Controls.Add(grp_progress)
+        y += 95
+
+        # === Кнопки ===
+        self.btn_check = Button()
+        self.btn_check.Text = "Проверить вид"
+        self.btn_check.Location = Point(15, y)
+        self.btn_check.Size = Size(120, 30)
+        self.btn_check.Click += self.on_check_view
+        self.btn_check.Enabled = False
+        self.Controls.Add(self.btn_check)
 
         self.btn_save = Button()
-        self.btn_save.Text = "Сохранить"
-        self.btn_save.Location = Point(385, y)
-        self.btn_save.Size = Size(90, 32)
-        self.btn_save.Click += self.on_save_click
+        self.btn_save.Text = "Сохранить отчёт"
+        self.btn_save.Location = Point(145, y)
+        self.btn_save.Size = Size(120, 30)
+        self.btn_save.Click += self.on_save_report
         self.btn_save.Enabled = False
-        self.tab_ifc.Controls.Add(self.btn_save)
+        self.Controls.Add(self.btn_save)
 
-    def on_browse_click(self, sender, args):
+        btn_close = Button()
+        btn_close.Text = "Закрыть"
+        btn_close.Location = Point(445, y)
+        btn_close.Size = Size(75, 30)
+        btn_close.Click += self.on_close
+        self.Controls.Add(btn_close)
+
+    def on_browse_ids(self, sender, args):
         """Выбор IDS файла."""
-        # Используем pyrevit.forms - надёжнее чем WinForms в IronPython
         selected = self._forms.pick_file(
             file_ext='ids',
-            init_dir=self._LIB_DIR if self._os.path.exists(self._LIB_DIR) else None,
+            init_dir=SCRIPT_DIR if self._os.path.exists(SCRIPT_DIR) else None,
             title="Выберите IDS файл"
         )
 
         if selected:
             self.ids_path = selected
             self.txt_ids.Text = self.ids_path
+            Logger.file_opened(SCRIPT_NAME, self.ids_path, "IDS файл")
 
-            # Парсим IDS
             try:
-                self.ids_parser = self._IDSParser(self.ids_path)
+                self.ids_parser = IDSParser(self.ids_path)
                 self.ids_parser.parse()
 
-                # Заполняем список типов
-                self.cmb_entity.Items.Clear()
                 entities = self.ids_parser.get_entities()
-                for ent in entities:
-                    self.cmb_entity.Items.Add(ent)
+                Logger.info(SCRIPT_NAME, "IDS загружен. IFC типов: {}".format(len(entities)))
+                Logger.debug(SCRIPT_NAME, "IFC типы: {}".format(", ".join(entities[:10])))
 
-                if self.cmb_entity.Items.Count > 0:
-                    self.cmb_entity.SelectedIndex = 0
+                self.lbl_status.Text = "IDS загружен. Типов: {}".format(len(entities))
+                self.lbl_status.ForeColor = self._Color.Black
 
-                # Для вкладки экземпляра
-                self.btn_check_instance.Enabled = True
-                self.lbl_instance_status.Text = "IDS загружен. Типов: {}, Выберите тип и элемент".format(len(entities))
-                self.lbl_instance_status.ForeColor = self._Color.Black
-
-                # Для вкладки IFC - проверяем наличие обоих файлов
-                self._update_ifc_check_state()
+                self._update_check_button()
 
             except Exception as e:
-                self.lbl_instance_status.Text = "Ошибка парсинга IDS: {}".format(str(e))
-                self.lbl_instance_status.ForeColor = self._Color.Red
+                Logger.error(SCRIPT_NAME, "Ошибка парсинга IDS: {}".format(str(e)), exc_info=True)
+                self.lbl_status.Text = "Ошибка парсинга IDS: {}".format(str(e))
+                self.lbl_status.ForeColor = self._Color.Red
+                self.ids_parser = None
 
-    def _update_ifc_check_state(self):
-        """Обновить состояние кнопки проверки IFC."""
-        if self.ids_path and self.ifc_path:
-            self.btn_check_ifc.Enabled = True
-            self.lbl_ifc_status.Text = "Готово к проверке. Нажмите 'Запустить проверку'"
-            self.lbl_ifc_status.ForeColor = self._Color.Black
-        elif self.ids_path:
-            self.btn_check_ifc.Enabled = False
-            self.lbl_ifc_status.Text = "IDS загружен. Выберите IFC файл"
-            self.lbl_ifc_status.ForeColor = self._Color.Black
-        elif self.ifc_path:
-            self.btn_check_ifc.Enabled = False
-            self.lbl_ifc_status.Text = "IFC выбран. Выберите IDS файл"
-            self.lbl_ifc_status.ForeColor = self._Color.Black
-        else:
-            self.btn_check_ifc.Enabled = False
-            self.lbl_ifc_status.Text = "Выберите IDS и IFC файлы для начала проверки"
-            self.lbl_ifc_status.ForeColor = self._Color.Black
-
-    def on_github_click(self, sender, args):
-        """Открыть GitHub issue в браузере."""
-        import webbrowser
-        webbrowser.open("https://github.com/IfcOpenShell/IfcOpenShell/issues/4661")
-
-    def on_open_ifc_export_click(self, sender, args):
-        """Открыть стандартное окно экспорта IFC в Revit."""
-        try:
-            from Autodesk.Revit.UI import PostableCommand, RevitCommandId
-            cmd_id = RevitCommandId.LookupPostableCommandId(PostableCommand.ExportIFC)
-            # Закрываем модальное окно перед вызовом команды
-            # иначе PostCommand выполнится только после закрытия диалога
-            self.Close()
-            self._uidoc.Application.PostCommand(cmd_id)
-        except Exception as e:
-            self._show_error("Ошибка", "Не удалось открыть окно экспорта IFC",
-                             details=str(e))
-
-    def on_browse_ifc_click(self, sender, args):
-        """Выбор IFC файла для проверки."""
+    def on_browse_mapping(self, sender, args):
+        """Выбор файла мэппинга."""
         selected = self._forms.pick_file(
-            file_ext='ifc',
-            title="Выберите IFC файл для проверки"
+            file_ext='txt',
+            init_dir=SCRIPT_DIR if self._os.path.exists(SCRIPT_DIR) else None,
+            title="Выберите файл мэппинга параметров"
         )
 
         if selected:
-            self.ifc_path = selected
-            self.txt_ifc.Text = self.ifc_path
-            self._update_ifc_check_state()
+            self.mapping_path = selected
+            self.txt_mapping.Text = self.mapping_path
+            Logger.file_opened(SCRIPT_NAME, self.mapping_path, "Файл мэппинга параметров")
 
-    def on_entity_changed(self, sender, args):
-        """Изменение выбранного типа IFC."""
-        # Заполнить dropdown predefinedTypes
-        self.cmb_predefined.Items.Clear()
-        self.cmb_predefined.Items.Add("(Все)")  # Опция для всех подтипов
+            try:
+                self.mapping_parser = MappingParser()
+                self.mapping_parser.parse(self.mapping_path)
 
-        if self.ids_parser and self.cmb_entity.SelectedIndex >= 0:
-            entity = str(self.cmb_entity.SelectedItem)
-            pred_types = self.ids_parser.get_predefined_types_for_entity(entity)
-            for pt in pred_types:
-                self.cmb_predefined.Items.Add(pt)
+                Logger.info(SCRIPT_NAME, "Мэппинг загружен. Параметров: {}".format(
+                    len(self.mapping_parser.param_mapping)))
+                Logger.debug(SCRIPT_NAME, "PropertySets: {}".format(
+                    ", ".join(self.mapping_parser.property_sets.keys())))
 
-        if self.cmb_predefined.Items.Count > 0:
-            self.cmb_predefined.SelectedIndex = 0
+                self.lbl_status.Text = "Мэппинг загружен. Параметров: {}".format(
+                    len(self.mapping_parser.param_mapping))
+                self.lbl_status.ForeColor = self._Color.Black
 
-        self.update_params_list()
+                self._update_check_button()
 
-    def on_prefix_changed(self, sender, args):
-        """Изменение префикса - обновить имена параметров Revit."""
-        self.update_params_list()
+            except Exception as e:
+                Logger.error(SCRIPT_NAME, "Ошибка парсинга мэппинга: {}".format(str(e)), exc_info=True)
+                self.lbl_status.Text = "Ошибка парсинга мэппинга: {}".format(str(e))
+                self.lbl_status.ForeColor = self._Color.Red
+                self.mapping_parser = None
 
-    def on_select_all(self, sender, args):
-        """Выбрать все атрибуты."""
-        for item in self.list_params.Items:
-            item.Checked = True
+    def _update_check_button(self):
+        """Обновить состояние кнопки проверки."""
+        self.btn_check.Enabled = (self.ids_parser is not None and
+                                   self.mapping_parser is not None)
 
-    def on_select_none(self, sender, args):
-        """Снять выбор со всех атрибутов."""
-        for item in self.list_params.Items:
-            item.Checked = False
-
-    def on_list_double_click(self, sender, args):
-        """Двойной клик по строке - показать элементы со значением."""
-        if self.list_params.SelectedItems.Count == 0:
+    def on_check_view(self, sender, args):
+        """Проверить все элементы на активном виде."""
+        if not self.ids_parser or not self.mapping_parser:
+            self._show_warning("Ошибка", "Сначала загрузите IDS и файл мэппинга")
             return
 
-        selected_item = self.list_params.SelectedItems[0]
-        param_name = selected_item.SubItems[1].Text  # Имя в Revit
-        param_value = selected_item.SubItems[4].Text  # Значение
-
-        if param_value and param_value != "-":
-            self._isolate_elements_by_param(param_name, param_value, filter_mode="has_value")
-        else:
-            # Если нет значения - показать элементы с параметром
-            self._isolate_elements_by_param(param_name, None, filter_mode="has_param")
-
-    def on_filter_has_param(self, sender, args):
-        """Показать элементы, у которых ЕСТЬ выбранный параметр."""
-        if self.list_params.SelectedItems.Count == 0:
-            self._show_info("Информация", "Выберите параметр в списке")
-            return
-
-        selected_item = self.list_params.SelectedItems[0]
-        param_name = selected_item.SubItems[1].Text  # Имя в Revit
-
-        self._isolate_elements_by_param(param_name, None, filter_mode="has_param")
-
-    def on_filter_by_value(self, sender, args):
-        """Показать элементы с определённым значением выбранного параметра."""
-        if self.list_params.SelectedItems.Count == 0:
-            self._show_info("Информация", "Выберите параметр в списке")
-            return
-
-        selected_item = self.list_params.SelectedItems[0]
-        param_name = selected_item.SubItems[1].Text  # Имя в Revit
-        param_value = selected_item.SubItems[4].Text  # Значение
-
-        if param_value == "-" or not param_value:
-            self._show_info("Информация", "Сначала проверьте элемент чтобы получить значение")
-            return
-
-        self._isolate_elements_by_param(param_name, param_value, filter_mode="has_value")
-
-    def on_filter_missing(self, sender, args):
-        """Показать элементы БЕЗ выбранного параметра."""
-        if self.list_params.SelectedItems.Count == 0:
-            self._show_info("Информация", "Выберите параметр в списке")
-            return
-
-        selected_item = self.list_params.SelectedItems[0]
-        param_name = selected_item.SubItems[1].Text  # Имя в Revit
-
-        self._isolate_elements_by_param(param_name, None, filter_mode="missing")
-
-    def on_show_all(self, sender, args):
-        """Сбросить изоляцию - показать все элементы."""
-        try:
-            active_view = self._doc.ActiveView
-            # Временная изоляция не требует транзакции
-            active_view.DisableTemporaryViewMode(self._TemporaryViewMode.TemporaryHideIsolate)
-            self.lbl_instance_status.Text = "Изоляция сброшена"
-            self.lbl_instance_status.ForeColor = self._Color.Black
-        except Exception as e:
-            self.lbl_instance_status.Text = "Ошибка: {}".format(str(e))
-            self.lbl_instance_status.ForeColor = self._Color.Red
-
-    def _isolate_elements_by_param(self, param_name, param_value, filter_mode="has_value"):
-        """Изолировать элементы на виде по значению параметра."""
-        try:
-            active_view = self._doc.ActiveView
-
-            # Собрать все элементы на виде
-            collector = self._FilteredElementCollector(self._doc, active_view.Id)
-            all_elements = collector.WhereElementIsNotElementType().ToElements()
-
-            matching_ids = self._List_ElementId()
-            checked_count = 0
-            match_count = 0
-
-            for elem in all_elements:
-                if elem.Category is None:
-                    continue
-
-                param = elem.LookupParameter(param_name)
-
-                if filter_mode == "missing":
-                    # Элементы БЕЗ параметра
-                    if param is None:
-                        matching_ids.Add(elem.Id)
-                        match_count += 1
-                elif filter_mode == "has_param":
-                    # Элементы с параметром (даже пустым)
-                    if param is not None:
-                        matching_ids.Add(elem.Id)
-                        match_count += 1
-                elif filter_mode == "has_value":
-                    # Элементы с конкретным значением
-                    if param and param.HasValue:
-                        val = self._get_param_value(param)
-                        if val == param_value:
-                            matching_ids.Add(elem.Id)
-                            match_count += 1
-
-                checked_count += 1
-
-            if matching_ids.Count == 0:
-                self.lbl_instance_status.Text = "Не найдено элементов"
-                self.lbl_instance_status.ForeColor = self._Color.Orange
-                return
-
-            # Изолировать элементы (временная изоляция не требует транзакции)
-            active_view.IsolateElementsTemporary(matching_ids)
-
-            if filter_mode == "missing":
-                self.lbl_instance_status.Text = "Изолировано {} элементов без параметра '{}'".format(
-                    match_count, param_name)
-            elif filter_mode == "has_param":
-                self.lbl_instance_status.Text = "Изолировано {} элементов с параметром '{}'".format(
-                    match_count, param_name)
-            else:
-                self.lbl_instance_status.Text = "Изолировано {} элементов с {}='{}'".format(
-                    match_count, param_name, param_value)
-            self.lbl_instance_status.ForeColor = self._Color.Blue
-
-        except Exception as e:
-            self.lbl_instance_status.Text = "Ошибка: {}".format(str(e))
-            self.lbl_instance_status.ForeColor = self._Color.Red
-
-    def update_params_list(self):
-        """Обновить список параметров для выбранного типа."""
-        self.list_params.Items.Clear()
-
-        if not self.ids_parser or self.cmb_entity.SelectedIndex < 0:
-            return
-
-        entity = str(self.cmb_entity.SelectedItem)
-        params = self.ids_parser.get_params_for_entity(entity)
-        prefix = self.txt_prefix.Text.strip()
-
-        # Добавляем параметры (property/baseName)
-        for prop in params:
-            base_name = prop["baseName"]
-            if prefix:
-                revit_name = "{}_{}".format(prefix, base_name)
-            else:
-                revit_name = base_name
-
-            is_required = prop.get("cardinality", "required") == "required"
-
-            # 7 колонок: baseName, Имя в Revit, Обяз., Есть, Значение, С парам., Со знач.
-            item = self._ListViewItem(base_name)  # Col 0: baseName (IDS)
-            item.SubItems.Add(revit_name)   # Col 1: Имя в Revit
-            item.SubItems.Add("Да" if is_required else "Нет")  # Col 2: Обяз.
-            item.SubItems.Add("-")          # Col 3: Есть
-            item.SubItems.Add("-")          # Col 4: Значение
-            item.SubItems.Add("-")          # Col 5: С парам. (кол-во)
-            item.SubItems.Add("-")          # Col 6: Со знач. (кол-во)
-            item.Checked = True
-            item.Tag = prop  # Сохраняем данные параметра напрямую
-
-            self.list_params.Items.Add(item)
-
-    def on_refresh_selection(self, sender, args):
-        """Обновить информацию о выделенном элементе."""
-        sel = self._uidoc.Selection.GetElementIds()
-        if sel.Count == 0:
-            self.lbl_element_info.Text = "Нет выделенных элементов"
-            self.lbl_element_info.ForeColor = self._Color.Gray
-            return
-
-        if sel.Count > 1:
-            self.lbl_element_info.Text = "Выделено {} элементов. Выберите один".format(sel.Count)
-            self.lbl_element_info.ForeColor = self._Color.Orange
-            return
-
-        elem_id = list(sel)[0]
-        elem = self._doc.GetElement(elem_id)
-
-        if elem:
-            cat_name = elem.Category.Name if elem.Category else "Без категории"
-            elem_name = elem.Name if hasattr(elem, 'Name') else "Без имени"
-            self.lbl_element_info.Text = "{}: {} (ID: {})".format(cat_name, elem_name, elem_id.IntegerValue)
-            self.lbl_element_info.ForeColor = self._Color.Black
-        else:
-            self.lbl_element_info.Text = "Элемент не найден"
-            self.lbl_element_info.ForeColor = self._Color.Red
-
-    def on_check_instance(self, sender, args):
-        """Проверить параметры выбранного экземпляра и подсчитать элементы."""
-        if not self.ids_parser or self.cmb_entity.SelectedIndex < 0:
-            self._show_warning("Ошибка", "Сначала выберите IDS файл и тип")
-            return
-
-        # Проверить что есть выбранные элементы
-        checked_count = 0
-        for item in self.list_params.Items:
-            if item.Checked:
-                checked_count += 1
-
-        if checked_count == 0:
-            self._show_warning("Ошибка", "Отметьте хотя бы один параметр для проверки")
-            return
-
-        sel = self._uidoc.Selection.GetElementIds()
-        if sel.Count != 1:
-            self._show_warning("Ошибка", "Выделите один элемент в Revit")
-            return
-
-        elem_id = list(sel)[0]
-        elem = self._doc.GetElement(elem_id)
-
-        if not elem:
-            self._show_error("Ошибка", "Элемент не найден")
-            return
-
-        prefix = self.txt_prefix.Text.strip()
-
-        # Собрать все элементы на виде для подсчёта
         active_view = self._doc.ActiveView
-        collector = self._FilteredElementCollector(self._doc, active_view.Id)
-        all_elements = list(collector.WhereElementIsNotElementType().ToElements())
+        if active_view is None:
+            self._show_warning("Ошибка", "Нет активного вида")
+            return
 
-        passed = 0
-        failed = 0
-        checked_total = 0
+        Logger.log_separator(SCRIPT_NAME, "Начало проверки вида")
+        Logger.info(SCRIPT_NAME, "Активный вид: {}".format(active_view.Name))
 
-        # Проверяем только отмеченные элементы
-        # Колонки: 0=baseName, 1=Имя в Revit, 2=Обяз., 3=Есть, 4=Значение, 5=С парам., 6=Со знач.
-        for item in self.list_params.Items:
-            if not item.Checked:
-                # Сбросить результаты для невыбранных
-                item.SubItems[3].Text = "-"
-                item.SubItems[4].Text = "-"
-                item.SubItems[5].Text = "-"
-                item.SubItems[6].Text = "-"
-                item.ForeColor = self._Color.Gray
-                continue
+        self.lbl_status.Text = "Проверка..."
+        self.lbl_status.ForeColor = self._Color.Black
+        self.progress_bar.Value = 0
+        Application.DoEvents()
 
-            checked_total += 1
-            prop = item.Tag
-            if not prop:
-                continue
+        try:
+            checker = ViewElementChecker(
+                self.ids_parser,
+                self.mapping_parser,
+                self.category_mapper
+            )
 
-            # Получаем данные параметра
-            base_name = prop.get("baseName", "")
-            is_required = prop.get("cardinality", "required") == "required"
+            def progress_callback(current, total):
+                if total > 0:
+                    percent = int(current * 100 / total)
+                    self.progress_bar.Value = percent
+                    Application.DoEvents()
 
-            if prefix:
-                revit_name = "{}_{}".format(prefix, base_name)
+            self.check_results = checker.check_view(active_view, progress_callback)
+
+            # Подсчёт статистики
+            total_elements = 0
+            total_ok = 0
+            total_fail = 0
+
+            for cat_name, elements in self.check_results.items():
+                for elem in elements:
+                    total_elements += 1
+                    if elem["failed"] == 0:
+                        total_ok += 1
+                    else:
+                        total_fail += 1
+
+            self.progress_bar.Value = 100
+
+            # Логирование результатов
+            Logger.info(SCRIPT_NAME, "Проверка завершена")
+            Logger.info(SCRIPT_NAME, "  Категорий: {}".format(len(self.check_results)))
+            Logger.info(SCRIPT_NAME, "  Элементов: {}".format(total_elements))
+            Logger.info(SCRIPT_NAME, "  Прошли проверку: {}".format(total_ok))
+            Logger.info(SCRIPT_NAME, "  Не прошли: {}".format(total_fail))
+
+            # Логирование по категориям
+            for cat_name, elements in sorted(self.check_results.items()):
+                cat_ok = sum(1 for e in elements if e["failed"] == 0)
+                cat_fail = len(elements) - cat_ok
+                Logger.debug(SCRIPT_NAME, "    {}: {} элементов ({} OK, {} Failed)".format(
+                    cat_name, len(elements), cat_ok, cat_fail))
+
+            if total_elements == 0:
+                Logger.warning(SCRIPT_NAME, "Нет элементов для проверки на этом виде")
+                self.lbl_status.Text = "Нет элементов для проверки на этом виде"
+                self.lbl_status.ForeColor = self._Color.Orange
             else:
-                revit_name = base_name
-
-            has_param = False
-            value = ""
-
-            # Пробуем с префиксом
-            param = elem.LookupParameter(revit_name)
-            if param:
-                has_param = True
-                value = self._get_param_value(param)
-            else:
-                # Пробуем без префикса
-                param = elem.LookupParameter(base_name)
-                if param:
-                    has_param = True
-                    value = self._get_param_value(param)
-                    revit_name = base_name
-
-            # Обновляем имя в Revit (колонка 1)
-            item.SubItems[1].Text = revit_name
-
-            # Обновляем результаты
-            if has_param:
-                item.SubItems[3].Text = "Да"
-                item.ForeColor = self._Color.Black
-                passed += 1
-            else:
-                item.SubItems[3].Text = "Нет"
-                if is_required:
-                    failed += 1
-                    item.ForeColor = self._Color.Red
+                self.lbl_status.Text = "Проверено: {} элементов. OK: {}, Ошибок: {}".format(
+                    total_elements, total_ok, total_fail)
+                if total_fail > 0:
+                    self.lbl_status.ForeColor = self._Color.Red
                 else:
-                    item.ForeColor = self._Color.Orange
+                    self.lbl_status.ForeColor = self._Color.Green
 
-            item.SubItems[4].Text = value if value else "-"
+            self.btn_save.Enabled = total_elements > 0
 
-            # Подсчитать элементы с параметром и со значением
-            count_with_param = 0
-            count_with_value = 0
+            # Генерируем HTML
+            generator = HTMLReportGenerator()
+            self.html_content = generator.generate(self.check_results, active_view.Name)
 
-            for el in all_elements:
-                if el.Category is None:
-                    continue
-                p = el.LookupParameter(revit_name)
-                if p is not None:
-                    count_with_param += 1
-                    if p.HasValue and value:
-                        el_value = self._get_param_value(p)
-                        if el_value == value:
-                            count_with_value += 1
+        except Exception as e:
+            Logger.error(SCRIPT_NAME, "Ошибка проверки: {}".format(str(e)), exc_info=True)
+            self.lbl_status.Text = "Ошибка проверки: {}".format(str(e))
+            self.lbl_status.ForeColor = self._Color.Red
 
-            item.SubItems[5].Text = str(count_with_param)
-            item.SubItems[6].Text = str(count_with_value) if value else "-"
-
-        # Статус
-        if failed == 0:
-            self.lbl_instance_status.Text = "OK: Найдено {}/{} параметров. Клик на колонки для фильтрации".format(passed, checked_total)
-            self.lbl_instance_status.ForeColor = self._Color.Green
-        else:
-            self.lbl_instance_status.Text = "Найдено {}/{}, отсутствует {} обязательных".format(passed, checked_total, failed)
-            self.lbl_instance_status.ForeColor = self._Color.Red
-
-    def on_check_ifc_click(self, sender, args):
-        """Запуск полной проверки через IFC."""
-        if not self.ids_path or not self.ifc_path:
+    def on_save_report(self, sender, args):
+        """Сохранить HTML отчёт."""
+        if not self.html_content:
+            self._show_warning("Ошибка", "Сначала выполните проверку")
             return
 
-        # Используем Python из venv окружения
-        python_path = self._VENV_PYTHON
-        if not python_path or not self._os.path.exists(python_path):
-            self._show_error("Ошибка", "Python окружение не найдено!",
-                             details="Перейдите в Settings → Окружение и установите окружение.")
-            return
-
-        # Проверяем существование IFC файла
-        if not self._os.path.exists(self.ifc_path):
-            self._show_error("Ошибка", "IFC файл не найден",
-                             details=self.ifc_path)
-            return
-
-        self.progress.Visible = True
-        self.progress.Style = self._ProgressBarStyle.Marquee
-        self.btn_check_ifc.Enabled = False
-        self.lbl_ifc_status.Text = "Проверка IDS требований..."
-        self.lbl_ifc_status.ForeColor = self._Color.Black
-        self._System.Windows.Forms.Application.DoEvents()
-
-        # Путь для отчёта - рядом с IFC файлом
-        ifc_dir = self._os.path.dirname(self.ifc_path)
-        ifc_name = self._os.path.splitext(self._os.path.basename(self.ifc_path))[0]
-        self.report_path = self._os.path.join(ifc_dir, "{}_ids_report_CPSK.html".format(ifc_name))
-
-        # Стандартный отчет ifctester если чекбокс включен
-        self.standard_report_path = None
-        if self.chk_standard_report.Checked:
-            self.standard_report_path = self._os.path.join(ifc_dir, "{}_ids_report_STANDARD.html".format(ifc_name))
-
-        self.result = self._run_ids_check(
-            python_path, self.ids_path, self.ifc_path, self.report_path,
-            self._os, self._tempfile, self._IDS_CHECKER_SCRIPT,
-            standard_report_path=self.standard_report_path
-        )
-
-        self.progress.Visible = False
-        self.btn_check_ifc.Enabled = True
-
-        if self.result.get("success"):
-            passed = self.result.get("passed_specs", 0)
-            failed = self.result.get("failed_specs", 0)
-            total = self.result.get("total_specs", 0)
-            passed_reqs = self.result.get("passed_requirements", 0)
-            failed_reqs = self.result.get("failed_requirements", 0)
-
-            if failed == 0 and failed_reqs == 0:
-                self.lbl_ifc_status.Text = "PASSED - Все проверки пройдены!"
-                self.lbl_ifc_status.ForeColor = self._Color.Green
-            else:
-                self.lbl_ifc_status.Text = "FAILED - Есть несоответствия"
-                self.lbl_ifc_status.ForeColor = self._Color.Red
-
-            self.lbl_result.Text = (
-                "Спецификации: {} всего, {} пройдено, {} не пройдено\n"
-                "Требования: {} пройдено, {} не пройдено"
-            ).format(total, passed, failed, passed_reqs, failed_reqs)
-
-            self.btn_open.Enabled = True
-            self.btn_save.Enabled = True
-            # Включаем кнопку стандартного отчета если он был создан
-            if self.standard_report_path and self._os.path.exists(self.standard_report_path):
-                self.btn_open_std.Enabled = True
-            else:
-                self.btn_open_std.Enabled = False
-        else:
-            self.show_ifc_error("\n".join(self.result.get("errors", ["Неизвестная ошибка"])))
-
-    def show_ifc_error(self, message):
-        """Показать ошибку на вкладке IFC."""
-        self.progress.Visible = False
-        self.btn_check_ifc.Enabled = True
-        self.lbl_ifc_status.Text = "ОШИБКА"
-        self.lbl_ifc_status.ForeColor = self._Color.Red
-        self.lbl_result.Text = message
-
-    def on_open_click(self, sender, args):
-        """Открыть CPSK HTML отчет."""
-        if self.report_path and self._os.path.exists(self.report_path):
-            self._os.startfile(self.report_path)
-
-    def on_open_std_click(self, sender, args):
-        """Открыть стандартный HTML отчет ifctester."""
-        if self.standard_report_path and self._os.path.exists(self.standard_report_path):
-            self._os.startfile(self.standard_report_path)
-        else:
-            self._show_info("Информация", "Стандартный отчет не найден",
-                            details="Включите опцию 'Также создать стандартный отчет' и запустите проверку снова.")
-
-    def on_save_click(self, sender, args):
-        """Сохранить HTML отчет."""
-        if not self.report_path or not self._os.path.exists(self.report_path):
-            return
-
-        # Используем pyrevit.forms - надёжнее чем WinForms в IronPython
+        # Выбор места сохранения
         save_path = self._forms.save_file(
             file_ext='html',
-            default_name='ids_report.html',
-            title="Сохранить отчет"
+            default_name='ids_check_report.html',
+            title="Сохранить отчёт"
         )
-        if save_path:
-            import shutil
-            shutil.copy(self.report_path, save_path)
-            self._show_success("Готово", "Отчет сохранен", details=save_path)
 
-    def on_close_click(self, sender, args):
+        if save_path:
+            try:
+                generator = HTMLReportGenerator()
+                generator.save(save_path, self.html_content)
+
+                Logger.file_saved(SCRIPT_NAME, save_path, "HTML отчёт проверки IDS")
+                Logger.log_separator(SCRIPT_NAME, "Итоги")
+                Logger.info(SCRIPT_NAME, "IDS файл: {}".format(self.ids_path))
+                Logger.info(SCRIPT_NAME, "Файл мэппинга: {}".format(self.mapping_path))
+                Logger.info(SCRIPT_NAME, "HTML отчёт: {}".format(save_path))
+
+                self.lbl_status.Text = "Отчёт сохранён: {}".format(save_path)
+                self.lbl_status.ForeColor = self._Color.Green
+
+                # Открыть отчёт в браузере
+                self._os.startfile(save_path)
+
+            except Exception as e:
+                Logger.error(SCRIPT_NAME, "Ошибка сохранения отчёта: {}".format(str(e)), exc_info=True)
+                self.lbl_status.Text = "Ошибка сохранения: {}".format(str(e))
+                self.lbl_status.ForeColor = self._Color.Red
+
+    def on_close(self, sender, args):
         """Закрыть форму."""
         self.Close()
 
@@ -1676,9 +1021,11 @@ class IDSCheckerForm(Form):
 if __name__ == "__main__":
     try:
         form = IDSCheckerForm()
-        form.ShowDialog()  # Модальное окно - требуется для транзакций (IFC экспорт)
+        form.ShowDialog()
+        Logger.info(SCRIPT_NAME, "Скрипт завершён")
     except Exception as e:
         error_msg = str(e)
+        Logger.critical(SCRIPT_NAME, "Критическая ошибка: {}".format(error_msg))
         if "NoneType" in error_msg and "Add" in error_msg:
             show_warning("Требуется перезапуск Revit", "Ошибка pyRevit!",
                          details="Это известная проблема с телеметрией pyRevit.\n\n"
