@@ -114,7 +114,7 @@ class MappingParser:
 
         current_pset = None
 
-        with codecs.open(path, 'r', encoding='utf-8') as f:
+        with codecs.open(path, 'r', 'utf-8') as f:
             for line in f:
                 line = line.rstrip('\r\n')
 
@@ -688,7 +688,7 @@ class HTMLReportGenerator:
 
     def save(self, path, content):
         """Сохранить HTML в файл."""
-        with codecs.open(path, 'w', encoding='utf-8') as f:
+        with codecs.open(path, 'w', 'utf-8') as f:
             f.write(content)
 
 
