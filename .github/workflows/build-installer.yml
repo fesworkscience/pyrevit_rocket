@@ -188,10 +188,16 @@ jobs:
             Write-Host "Found merged PR #$prNumber"
             try {
               $prBody = gh pr view $prNumber --json body --jq '.body' 2>$null
-              # Clean PR body - remove checklist and screenshots sections
-              $prBody = $prBody -replace "(?s)## Связанные Issues.*?(?=##|$)", ""
-              $prBody = $prBody -replace "(?s)## Чеклист.*?(?=##|$)", ""
-              $prBody = $prBody -replace "(?s)## Скриншоты.*", ""
+              # Clean PR body - remove technical sections
+              # Use Singleline mode for multiline matching
+              $opts = [System.Text.RegularExpressions.RegexOptions]::Singleline
+              $prBody = [regex]::Replace($prBody, '## Связанные Issues.*?((?=##)|$)', '', $opts)
+              $prBody = [regex]::Replace($prBody, '## Чеклист.*?((?=##)|$)', '', $opts)
+              $prBody = [regex]::Replace($prBody, '## Скриншоты.*', '', $opts)
+              $prBody = [regex]::Replace($prBody, 'Closes #\(номер issue\)', '', $opts)
+              $prBody = [regex]::Replace($prBody, 'Если применимо.*UI\.?', '', $opts)
+              $prBody = [regex]::Replace($prBody, '<img[^>]*>', '', $opts)
+              $prBody = [regex]::Replace($prBody, 'Краткое описание изменений\.?', '', $opts)
               $prBody = $prBody.Trim()
               Write-Host "Using PR description"
             } catch {
