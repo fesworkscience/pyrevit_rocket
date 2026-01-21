@@ -182,14 +182,20 @@ jobs:
 
           # Try to get PR description (smart approach)
           $prBody = ""
+          $prAuthor = ""
+          $prNumber = ""
           $mergeCommit = git log --merges --pretty=format:"%s" -1 2>$null
           if ($mergeCommit -match "Merge pull request #(\d+)") {
             $prNumber = $matches[1]
             Write-Host "Found merged PR #$prNumber"
             try {
-              $prBody = gh pr view $prNumber --json body --jq '.body' 2>$null
+              # Get PR body and author
+              $prData = gh pr view $prNumber --json body,author 2>$null | ConvertFrom-Json
+              $prBody = $prData.body
+              $prAuthor = $prData.author.login
+              Write-Host "PR author: @$prAuthor"
+
               # Clean PR body - remove technical sections
-              # Use Singleline mode for multiline matching
               $opts = [System.Text.RegularExpressions.RegexOptions]::Singleline
               $prBody = [regex]::Replace($prBody, '## Связанные Issues.*?((?=##)|$)', '', $opts)
               $prBody = [regex]::Replace($prBody, '## Чеклист.*?((?=##)|$)', '', $opts)
@@ -219,10 +225,24 @@ jobs:
             $changes = "### Изменения`n" + ($commitList -join "`n")
           }
 
+          # Build authors section
+          $authorsSection = ""
+          if ($prAuthor) {
+            # PR author with GitHub link
+            $authorsSection = "### Авторы`n- [@$prAuthor](https://github.com/$prAuthor)"
+            # Add commit authors if different
+            $otherAuthors = $authors | Where-Object { $_ -ne $prAuthor }
+            if ($otherAuthors) {
+              $authorsSection += "`n" + (($otherAuthors | ForEach-Object { "- $_" }) -join "`n")
+            }
+          } elseif ($authors) {
+            $authorsSection = "### Авторы`n" + (($authors | ForEach-Object { "- $_" }) -join "`n")
+          }
+
           # Server notes
           $serverNotes = "## CPSK Tools v$version`n`n$changes"
-          if ($authors) {
-            $serverNotes += "`n`n### Авторы`n" + (($authors | ForEach-Object { "- $_" }) -join "`n")
+          if ($authorsSection) {
+            $serverNotes += "`n`n$authorsSection"
           }
           $serverNotes += "`n`n### Требования`n- Windows 10/11`n- Autodesk Revit 2021-2025"
           $serverNotes | Out-File -FilePath "release_notes.txt" -Encoding UTF8
@@ -231,8 +251,8 @@ jobs:
           $githubNotes = "## CPSK Tools v$version`n`n"
           $githubNotes += "### Установка`n1. Скачайте ``CPSK_Tools_v$version.exe```n2. Запустите установщик`n3. Перезапустите Revit`n`n"
           $githubNotes += $changes
-          if ($authors) {
-            $githubNotes += "`n`n### Авторы`n" + (($authors | ForEach-Object { "- $_" }) -join "`n")
+          if ($authorsSection) {
+            $githubNotes += "`n`n$authorsSection"
           }
           $githubNotes += "`n`n### Требования`n- Windows 10/11`n- Autodesk Revit 2021-2025"
           $githubNotes | Out-File -FilePath "github_release_notes.txt" -Encoding UTF8
