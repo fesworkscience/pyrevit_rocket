@@ -167,54 +167,71 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         id: release_notes
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Get commits since last tag
-          $lastTag = git describe --tags --abbrev=0 HEAD^ 2>$null
-          if ($lastTag) {
-            $commits = git log --pretty=format:"- %s" "$lastTag..HEAD" --no-merges | Where-Object { $_ -notmatch "Release v" }
-            $authors = git log --pretty=format:"%an" "$lastTag..HEAD" --no-merges | Sort-Object -Unique | Where-Object { $_ -ne "github-actions[bot]" }
-          } else {
-            $commits = git log --pretty=format:"- %s" -10 --no-merges | Where-Object { $_ -notmatch "Release v" }
-            $authors = git log --pretty=format:"%an" -10 --no-merges | Sort-Object -Unique | Where-Object { $_ -ne "github-actions[bot]" }
-          }
-
           $version = "${{ steps.version.outputs.VERSION }}"
+          $lastTag = git describe --tags --abbrev=0 HEAD~1 2>$null
 
-          # Release notes for server (markdown)
-          $serverNotes = "## CPSK Tools v$version`n`n"
-          $serverNotes += "### Изменения`n"
-          if ($commits) {
-            $serverNotes += ($commits -join "`n")
+          # Get authors
+          if ($lastTag) {
+            $authors = git log --pretty=format:"%an" "$lastTag..HEAD" --no-merges | Sort-Object -Unique | Where-Object { $_ -ne "github-actions[bot]" -and $_ -ne "" }
           } else {
-            $serverNotes += "- Обновление версии"
+            $authors = git log --pretty=format:"%an" -10 --no-merges | Sort-Object -Unique | Where-Object { $_ -ne "github-actions[bot]" -and $_ -ne "" }
           }
+
+          # Try to get PR description (smart approach)
+          $prBody = ""
+          $mergeCommit = git log --merges --pretty=format:"%s" -1 2>$null
+          if ($mergeCommit -match "Merge pull request #(\d+)") {
+            $prNumber = $matches[1]
+            Write-Host "Found merged PR #$prNumber"
+            try {
+              $prBody = gh pr view $prNumber --json body --jq '.body' 2>$null
+              # Clean PR body - remove checklist and screenshots sections
+              $prBody = $prBody -replace "(?s)## Связанные Issues.*?(?=##|$)", ""
+              $prBody = $prBody -replace "(?s)## Чеклист.*?(?=##|$)", ""
+              $prBody = $prBody -replace "(?s)## Скриншоты.*", ""
+              $prBody = $prBody.Trim()
+              Write-Host "Using PR description"
+            } catch {
+              Write-Host "Could not get PR body: $_"
+            }
+          }
+
+          # Build content section
+          if ($prBody) {
+            $changes = $prBody
+          } else {
+            # Fallback to commits
+            Write-Host "No PR found, using commits"
+            if ($lastTag) {
+              $commitList = git log --pretty=format:"- %s" "$lastTag..HEAD" --no-merges | Where-Object { $_ -notmatch "Release v" }
+            } else {
+              $commitList = git log --pretty=format:"- %s" -10 --no-merges | Where-Object { $_ -notmatch "Release v" }
+            }
+            $changes = "### Изменения`n" + ($commitList -join "`n")
+          }
+
+          # Server notes
+          $serverNotes = "## CPSK Tools v$version`n`n$changes"
           if ($authors) {
-            $serverNotes += "`n`n### Авторы`n"
-            $serverNotes += ($authors | ForEach-Object { "- $_" }) -join "`n"
+            $serverNotes += "`n`n### Авторы`n" + (($authors | ForEach-Object { "- $_" }) -join "`n")
           }
           $serverNotes += "`n`n### Требования`n- Windows 10/11`n- Autodesk Revit 2021-2025"
           $serverNotes | Out-File -FilePath "release_notes.txt" -Encoding UTF8
 
-          # Release notes for GitHub (with install instructions)
-          $githubNotes = "## CPSK Tools for Revit v$version`n`n"
-          $githubNotes += "### Установка`n"
-          $githubNotes += "1. Скачайте ``CPSK_Tools_v$version.exe```n"
-          $githubNotes += "2. Запустите установщик`n"
-          $githubNotes += "3. Перезапустите Revit`n`n"
-          $githubNotes += "### Изменения`n"
-          if ($commits) {
-            $githubNotes += ($commits -join "`n")
-          } else {
-            $githubNotes += "- Обновление версии"
-          }
+          # GitHub notes (with install instructions)
+          $githubNotes = "## CPSK Tools v$version`n`n"
+          $githubNotes += "### Установка`n1. Скачайте ``CPSK_Tools_v$version.exe```n2. Запустите установщик`n3. Перезапустите Revit`n`n"
+          $githubNotes += $changes
           if ($authors) {
-            $githubNotes += "`n`n### Авторы`n"
-            $githubNotes += ($authors | ForEach-Object { "- $_" }) -join "`n"
+            $githubNotes += "`n`n### Авторы`n" + (($authors | ForEach-Object { "- $_" }) -join "`n")
           }
           $githubNotes += "`n`n### Требования`n- Windows 10/11`n- Autodesk Revit 2021-2025"
           $githubNotes | Out-File -FilePath "github_release_notes.txt" -Encoding UTF8
 
-          Write-Host "Release notes generated"
+          Write-Host "=== Release notes generated ==="
 
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
