@@ -6,6 +6,16 @@ pyRevit extension for industrial building automation in Revit.
 
 **НИКОГДА не создавай теги вручную!** Используй скрипт релиза:
 
+### ЗАПРЕЩЕНО:
+- `gh release create` - НЕ использовать! GitHub Actions создаёт release автоматически
+- `git tag` напрямую - НЕ использовать! Только через release.ps1
+- Ручное редактирование release notes через `gh release edit` до завершения GitHub Actions
+
+### ПРАВИЛЬНЫЙ ПОРЯДОК:
+1. Запустить `release.ps1` - он создаёт тег и пушит
+2. Дождаться завершения GitHub Actions (создаст release + exe)
+3. После этого можно редактировать release notes через `gh release edit`
+
 ```bash
 # Patch версия (1.0.35 -> 1.0.36) - по умолчанию
 powershell -ExecutionPolicy Bypass -File "release_scripts\release.ps1"
