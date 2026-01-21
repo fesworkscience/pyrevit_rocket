@@ -153,9 +153,18 @@ class IDSParser:
             prop["propertySet"] = pset_node.InnerText
 
         # BaseName (имя параметра)
+        # Сначала пробуем simpleValue
         name_node = prop_node.SelectSingleNode("ids:baseName/ids:simpleValue", nsm)
         if name_node:
             prop["baseName"] = name_node.InnerText
+        else:
+            # Если нет simpleValue, пробуем xs:enumeration (первое значение)
+            enum_node = prop_node.SelectSingleNode("ids:baseName/xs:restriction/xs:enumeration", nsm)
+            if enum_node:
+                val = enum_node.GetAttribute("value")
+                if val:
+                    prop["baseName"] = val
+                    Logger.debug(SCRIPT_NAME, "  baseName из enumeration: {}".format(val))
 
         # DataType
         datatype_attr = prop_node.GetAttribute("dataType")
