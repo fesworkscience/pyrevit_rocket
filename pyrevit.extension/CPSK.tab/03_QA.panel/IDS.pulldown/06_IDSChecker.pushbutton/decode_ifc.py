@@ -26,6 +26,7 @@ try:
         content = f.read()
 except UnicodeDecodeError:
     # Fallback: read as latin-1 (accepts any byte)
+    print('Note: Using latin-1 encoding fallback')
     with codecs.open(ifc_path, 'r', 'latin-1') as f:
         content = f.read()
 

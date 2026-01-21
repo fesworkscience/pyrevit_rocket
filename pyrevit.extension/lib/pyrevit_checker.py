@@ -386,6 +386,10 @@ class PyRevitChecker:
                 # Logger.warning/error тоже считается уведомлением (логирование)
                 if 'Logger.warning' in line or 'Logger.error' in line:
                     has_notify_in_block = True
+                # print() допустим для вспомогательных скриптов (не script.py)
+                filename = os.path.basename(self.current_file) if self.current_file else ""
+                if filename != 'script.py' and 'print(' in line:
+                    has_notify_in_block = True
                 # return, raise, continue - допустимые варианты
                 # (return/raise - возвращают/перебрасывают, continue - пропуск в цикле)
                 # pass - НЕ допустим (молчаливый пропуск без контроля потока)
