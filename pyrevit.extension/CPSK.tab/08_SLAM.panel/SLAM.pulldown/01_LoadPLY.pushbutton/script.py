@@ -769,10 +769,16 @@ def main():
             if created_plans and color_mode != COLOR_MODE_NONE:
                 log.append("")
                 log.append("=== Раскраска планов ===")
+                log.append("Элементов для раскраски: {}".format(len(created_elements)))
                 for plan in created_plans:
+                    colored = 0
                     for ds, r, g, b in created_elements:
-                        apply_layer_color_override(plan, ds.Id, r, g, b)
-                    log.append("+ {}".format(plan.Name))
+                        try:
+                            apply_layer_color_override(plan, ds.Id, r, g, b)
+                            colored += 1
+                        except Exception as e:
+                            log.append("  Ошибка {}: {}".format(ds.Id, str(e)))
+                    log.append("+ {} ({} элементов)".format(plan.Name, colored))
 
         t.Commit()
 
