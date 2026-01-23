@@ -47,7 +47,7 @@ from ply_parser import parse_header, parse_ply_full, get_bounds
 from ply_filters import voxel_grid_filter, statistical_outlier_filter, radius_outlier_filter
 from ply_visualization import (
     apply_colors, COLOR_MODE_NONE, COLOR_MODE_HEIGHT, COLOR_MODE_ORIGINAL,
-    has_colors, get_height_color, group_points_by_color
+    has_colors, get_height_color
 )
 
 from pyrevit import revit, script
@@ -668,61 +668,54 @@ def main():
     # Получаем активный вид для применения цветов
     active_view = uidoc.ActiveView
 
+    # Храним созданные DirectShape и планы для раскраски
+    created_elements = []  # [(ds, r, g, b), ...]
+    created_plans = []  # [plan, ...]
+
     with Transaction(doc, "Загрузка SLAM PLY") as t:
         t.Start()
 
         log.append("=== Создание DirectShape ===")
         total_displayed = 0
 
-        # Режим оригинальных цветов - группируем по цветам
-        if color_mode == COLOR_MODE_ORIGINAL:
-            log.append("Режим: оригинальные цвета (квантизация {})".format(quantize_level))
+        # Один DirectShape на слой (независимо от режима цвета)
+        for layer_idx in sorted(layers.keys()):
+            layer_points = layers[layer_idx]
 
-            for layer_idx in sorted(layers.keys()):
-                layer_points = layers[layer_idx]
+            z_from = base_z + layer_idx * layer_height_m
+            z_to = z_from + layer_height_m
 
-                z_from = base_z + layer_idx * layer_height_m
-                z_to = z_from + layer_height_m
+            layer_name = "SLAM_{:.1f}-{:.1f}m".format(z_from, z_to)
 
-                # Группируем точки слоя по цветам
-                color_groups = group_points_by_color(layer_points, levels=quantize_level)
-                log.append("Слой {:.1f}-{:.1f}m: {} цветовых групп".format(
-                    z_from, z_to, len(color_groups)))
+            ds, displayed = create_layer_directshape(
+                doc, layer_points, layer_name, point_size_mm
+            )
+            total_displayed += displayed
 
-                for color_key, group_points in color_groups.items():
-                    r, g, b = color_key
-                    group_name = "SLAM_{:.1f}m_RGB({},{},{})".format(z_from, r, g, b)
+            # Определяем цвет слоя
+            if color_mode == COLOR_MODE_HEIGHT:
+                layer_center_z = (z_from + z_to) / 2.0
+                r, g, b = get_height_color(layer_center_z, min_z, max_z)
+            elif color_mode == COLOR_MODE_ORIGINAL:
+                # Средний цвет точек слоя
+                if layer_points and len(layer_points[0]) >= 6:
+                    avg_r = sum(p[3] for p in layer_points) // len(layer_points)
+                    avg_g = sum(p[4] for p in layer_points) // len(layer_points)
+                    avg_b = sum(p[5] for p in layer_points) // len(layer_points)
+                    r, g, b = avg_r, avg_g, avg_b
+                else:
+                    r, g, b = 128, 128, 128
+            else:
+                r, g, b = 128, 128, 128  # Серый для режима без цвета
 
-                    ds, displayed = create_layer_directshape(
-                        doc, group_points, group_name, point_size_mm
-                    )
-                    total_displayed += displayed
+            # Сохраняем для раскраски
+            created_elements.append((ds, r, g, b))
 
-                    # Применяем цвет группы
-                    apply_layer_color_override(active_view, ds.Id, r, g, b)
+            # Применяем цвет на активном виде
+            if color_mode != COLOR_MODE_NONE:
+                apply_layer_color_override(active_view, ds.Id, r, g, b)
 
-        else:
-            # Стандартный режим - по слоям
-            for layer_idx in sorted(layers.keys()):
-                layer_points = layers[layer_idx]
-
-                z_from = base_z + layer_idx * layer_height_m
-                z_to = z_from + layer_height_m
-
-                layer_name = "SLAM_{:.1f}-{:.1f}m".format(z_from, z_to)
-
-                ds, displayed = create_layer_directshape(
-                    doc, layer_points, layer_name, point_size_mm
-                )
-                total_displayed += displayed
-
-                # Применяем цвет слоя через Override Graphics
-                if color_mode == COLOR_MODE_HEIGHT:
-                    layer_center_z = (z_from + z_to) / 2.0
-                    r, g, b = get_height_color(layer_center_z, min_z, max_z)
-                    apply_layer_color_override(active_view, ds.Id, r, g, b)
-
-                log.append("+ {} ({} точек)".format(layer_name, displayed))
+            log.append("+ {} ({} точек)".format(layer_name, displayed))
 
         log.append("")
         log.append("Всего отображено: {:,} точек".format(total_displayed).replace(',', ' '))
@@ -744,10 +737,20 @@ def main():
                     plan = create_floor_plan(doc, level, layer_height_mm)
                     if plan:
                         plan.Name = level_name
+                        created_plans.append(plan)
                         log.append("+ {}".format(level_name))
                 except Exception as e:
                     log.append("- {} (ошибка: {})".format(level_name, str(e)))
                     continue
+
+            # Раскрашиваем элементы на созданных планах
+            if created_plans and color_mode != COLOR_MODE_NONE:
+                log.append("")
+                log.append("=== Раскраска планов ===")
+                for plan in created_plans:
+                    for ds, r, g, b in created_elements:
+                        apply_layer_color_override(plan, ds.Id, r, g, b)
+                    log.append("+ {}".format(plan.Name))
 
         t.Commit()
 
