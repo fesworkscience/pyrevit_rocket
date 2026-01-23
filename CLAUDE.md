@@ -2,6 +2,17 @@
 
 pyRevit extension for industrial building automation in Revit.
 
+## GitHub CLI (gh)
+
+Путь к gh: `"C:\Program Files\GitHub CLI\gh.exe"`
+
+```bash
+# Примеры использования
+"C:\Program Files\GitHub CLI\gh.exe" pr list --state open
+"C:\Program Files\GitHub CLI\gh.exe" pr merge <номер> --merge
+"C:\Program Files\GitHub CLI\gh.exe" pr view <номер>
+```
+
 ## РЕЛИЗ (ОБЯЗАТЕЛЬНО!)
 
 **НИКОГДА не создавай теги вручную!** Используй скрипт релиза:
