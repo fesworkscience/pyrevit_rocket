@@ -128,6 +128,53 @@ def get_color_for_revit(r, g, b):
     )
 
 
+def quantize_color(r, g, b, levels=8):
+    """
+    Квантизация цвета - уменьшение количества уникальных цветов.
+
+    Args:
+        r, g, b: компоненты цвета 0-255
+        levels: количество уровней на канал (8 = 512 цветов, 16 = 4096 цветов)
+
+    Returns:
+        tuple: (r, g, b) квантизированный цвет
+    """
+    step = 256 // levels
+    qr = ((r // step) * step) + step // 2
+    qg = ((g // step) * step) + step // 2
+    qb = ((b // step) * step) + step // 2
+    return (min(255, qr), min(255, qg), min(255, qb))
+
+
+def group_points_by_color(points, levels=8):
+    """
+    Группирует точки по квантизированным цветам.
+
+    Args:
+        points: список точек [(x, y, z, r, g, b), ...]
+        levels: количество уровней квантизации на канал
+
+    Returns:
+        dict: {(r, g, b): [(x, y, z, r, g, b), ...], ...}
+    """
+    groups = {}
+
+    for p in points:
+        # Получаем цвет точки
+        r = p[3] if p[3] is not None else 128
+        g = p[4] if p[4] is not None else 128
+        b = p[5] if p[5] is not None else 128
+
+        # Квантизируем
+        color_key = quantize_color(r, g, b, levels)
+
+        if color_key not in groups:
+            groups[color_key] = []
+        groups[color_key].append(p)
+
+    return groups
+
+
 def has_colors(points):
     """
     Проверяет, есть ли цвета в точках.

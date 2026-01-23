@@ -1,0 +1,3 @@
+title: "Раскрасить\nSLAM"
+tooltip: "Применяет цвета к DirectShape элементам SLAM на текущем виде.\nЧитает цвет из марки элемента (формат RGB(r,g,b))."
+author: CPSK

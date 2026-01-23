@@ -45,7 +45,10 @@ if not require_auth():
 # Импортируем локальные модули
 from ply_parser import parse_header, parse_ply_full, get_bounds
 from ply_filters import voxel_grid_filter, statistical_outlier_filter, radius_outlier_filter
-from ply_visualization import apply_colors, COLOR_MODE_NONE, COLOR_MODE_HEIGHT, COLOR_MODE_ORIGINAL, has_colors, get_height_color
+from ply_visualization import (
+    apply_colors, COLOR_MODE_NONE, COLOR_MODE_HEIGHT, COLOR_MODE_ORIGINAL,
+    has_colors, get_height_color, group_points_by_color
+)
 
 from pyrevit import revit, script
 from Autodesk.Revit.DB import (
@@ -338,7 +341,7 @@ class PLYLoaderForm(Form):
         grp_visual = GroupBox()
         grp_visual.Text = "Визуализация"
         grp_visual.Location = Point(15, y)
-        grp_visual.Size = Size(435, 55)
+        grp_visual.Size = Size(435, 80)
 
         lbl_color = Label()
         lbl_color.Text = "Раскраска:"
@@ -356,9 +359,34 @@ class PLYLoaderForm(Form):
         self.cmb_color_mode.SelectedIndex = 1  # По высоте по умолчанию
         grp_visual.Controls.Add(self.cmb_color_mode)
 
+        # Квантизация цветов
+        lbl_quantize = Label()
+        lbl_quantize.Text = "Квантизация:"
+        lbl_quantize.Location = Point(15, 50)
+        lbl_quantize.Size = Size(80, 20)
+        grp_visual.Controls.Add(lbl_quantize)
+
+        self.cmb_quantize = ComboBox()
+        self.cmb_quantize.Location = Point(100, 48)
+        self.cmb_quantize.Size = Size(150, 25)
+        self.cmb_quantize.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList
+        self.cmb_quantize.Items.Add("4 (64 цвета)")
+        self.cmb_quantize.Items.Add("8 (512 цветов)")
+        self.cmb_quantize.Items.Add("16 (4096 цветов)")
+        self.cmb_quantize.Items.Add("32 (32768 цветов)")
+        self.cmb_quantize.SelectedIndex = 1  # 8 по умолчанию
+        grp_visual.Controls.Add(self.cmb_quantize)
+
+        lbl_quantize_hint = Label()
+        lbl_quantize_hint.Text = "(для оригинальных цветов)"
+        lbl_quantize_hint.Location = Point(260, 50)
+        lbl_quantize_hint.Size = Size(160, 20)
+        lbl_quantize_hint.ForeColor = Color.Gray
+        grp_visual.Controls.Add(lbl_quantize_hint)
+
         self.Controls.Add(grp_visual)
 
-        y += 65
+        y += 90
 
         # === Настройки слоёв ===
         grp_layers = GroupBox()
@@ -506,6 +534,10 @@ class PLYLoaderForm(Form):
         color_modes = [COLOR_MODE_NONE, COLOR_MODE_HEIGHT, COLOR_MODE_ORIGINAL]
         color_mode = color_modes[self.cmb_color_mode.SelectedIndex]
 
+        # Уровень квантизации
+        quantize_levels = [4, 8, 16, 32]
+        quantize_level = quantize_levels[self.cmb_quantize.SelectedIndex]
+
         self.result = {
             "path": self.ply_path,
             "layer_height_mm": layer_height,
@@ -519,7 +551,8 @@ class PLYLoaderForm(Form):
             "use_radius": self.chk_radius.Checked,
             "radius_mm": radius,
             # Визуализация
-            "color_mode": color_mode
+            "color_mode": color_mode,
+            "quantize_level": quantize_level
         }
         self.DialogResult = DialogResult.OK
         self.Close()
@@ -541,6 +574,7 @@ def main():
     point_size_mm = opts["point_size_mm"]
     create_plans = opts["create_plans"]
     color_mode = opts["color_mode"]
+    quantize_level = opts["quantize_level"]
 
     layer_height_m = layer_height_mm / 1000.0
 
@@ -629,26 +663,55 @@ def main():
         log.append("=== Создание DirectShape ===")
         total_displayed = 0
 
-        for layer_idx in sorted(layers.keys()):
-            layer_points = layers[layer_idx]
+        # Режим оригинальных цветов - группируем по цветам
+        if color_mode == COLOR_MODE_ORIGINAL:
+            log.append("Режим: оригинальные цвета (квантизация {})".format(quantize_level))
 
-            z_from = base_z + layer_idx * layer_height_m
-            z_to = z_from + layer_height_m
+            for layer_idx in sorted(layers.keys()):
+                layer_points = layers[layer_idx]
 
-            layer_name = "SLAM_{:.1f}-{:.1f}m".format(z_from, z_to)
+                z_from = base_z + layer_idx * layer_height_m
+                z_to = z_from + layer_height_m
 
-            ds, displayed = create_layer_directshape(
-                doc, layer_points, layer_name, point_size_mm
-            )
-            total_displayed += displayed
+                # Группируем точки слоя по цветам
+                color_groups = group_points_by_color(layer_points, levels=quantize_level)
+                log.append("Слой {:.1f}-{:.1f}m: {} цветовых групп".format(
+                    z_from, z_to, len(color_groups)))
 
-            # Применяем цвет слоя через Override Graphics
-            if color_mode == COLOR_MODE_HEIGHT:
-                layer_center_z = (z_from + z_to) / 2.0
-                r, g, b = get_height_color(layer_center_z, min_z, max_z)
-                apply_layer_color_override(active_view, ds.Id, r, g, b)
+                for color_key, group_points in color_groups.items():
+                    r, g, b = color_key
+                    group_name = "SLAM_{:.1f}m_RGB({},{},{})".format(z_from, r, g, b)
 
-            log.append("+ {} ({} точек)".format(layer_name, displayed))
+                    ds, displayed = create_layer_directshape(
+                        doc, group_points, group_name, point_size_mm
+                    )
+                    total_displayed += displayed
+
+                    # Применяем цвет группы
+                    apply_layer_color_override(active_view, ds.Id, r, g, b)
+
+        else:
+            # Стандартный режим - по слоям
+            for layer_idx in sorted(layers.keys()):
+                layer_points = layers[layer_idx]
+
+                z_from = base_z + layer_idx * layer_height_m
+                z_to = z_from + layer_height_m
+
+                layer_name = "SLAM_{:.1f}-{:.1f}m".format(z_from, z_to)
+
+                ds, displayed = create_layer_directshape(
+                    doc, layer_points, layer_name, point_size_mm
+                )
+                total_displayed += displayed
+
+                # Применяем цвет слоя через Override Graphics
+                if color_mode == COLOR_MODE_HEIGHT:
+                    layer_center_z = (z_from + z_to) / 2.0
+                    r, g, b = get_height_color(layer_center_z, min_z, max_z)
+                    apply_layer_color_override(active_view, ds.Id, r, g, b)
+
+                log.append("+ {} ({} точек)".format(layer_name, displayed))
 
         log.append("")
         log.append("Всего отображено: {:,} точек".format(total_displayed).replace(',', ' '))

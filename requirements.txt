@@ -3,7 +3,7 @@
 
 # IFC/IDS проверка
 ifcopenshell>=0.8.0
-ifctester>=0.8.0
+ifctester==0.8.2
 
 # Работа с XML/HTML
 lxml>=5.0.0
