@@ -54,7 +54,7 @@ from pyrevit import revit, script
 from Autodesk.Revit.DB import (
     Transaction, XYZ, Line,
     DirectShape, ElementId, BuiltInCategory, BuiltInParameter,
-    ViewPlan, Level, FilteredElementCollector, ViewFamilyType,
+    ViewPlan, View3D, Level, FilteredElementCollector, ViewFamilyType,
     PlanViewPlane, OverrideGraphicSettings
 )
 from Autodesk.Revit.DB import Color as RevitColor
@@ -564,6 +564,17 @@ class PLYLoaderForm(Form):
 
 def main():
     """Основная функция."""
+    # Проверяем активный вид ДО показа формы
+    active_view = uidoc.ActiveView
+    # ViewPlan и View3D поддерживают Override Graphics
+    if not isinstance(active_view, (ViewPlan, View3D)):
+        show_error(
+            "Неподдерживаемый вид",
+            "Текущий вид не поддерживает раскраску элементов.",
+            details="Переключитесь на 3D вид или план этажа перед загрузкой.\nТекущий тип вида: {}".format(type(active_view).__name__)
+        )
+        return
+
     form = PLYLoaderForm()
     if form.ShowDialog() != DialogResult.OK:
         return

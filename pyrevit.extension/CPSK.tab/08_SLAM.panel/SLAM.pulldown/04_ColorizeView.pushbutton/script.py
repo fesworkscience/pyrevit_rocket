@@ -32,7 +32,8 @@ if not require_auth():
 from pyrevit import revit
 from Autodesk.Revit.DB import (
     FilteredElementCollector, DirectShape, BuiltInCategory,
-    BuiltInParameter, OverrideGraphicSettings, Transaction
+    BuiltInParameter, OverrideGraphicSettings, Transaction,
+    ViewPlan, View3D
 )
 from Autodesk.Revit.DB import Color as RevitColor
 
@@ -127,6 +128,15 @@ def main():
 
     if active_view is None:
         show_error("Ошибка", "Нет активного вида")
+        return
+
+    # ViewPlan и View3D поддерживают Override Graphics
+    if not isinstance(active_view, (ViewPlan, View3D)):
+        show_error(
+            "Неподдерживаемый вид",
+            "Текущий вид не поддерживает раскраску элементов.",
+            details="Переключитесь на 3D вид или план этажа.\nТекущий тип вида: {}".format(type(active_view).__name__)
+        )
         return
 
     # Получаем SLAM элементы
