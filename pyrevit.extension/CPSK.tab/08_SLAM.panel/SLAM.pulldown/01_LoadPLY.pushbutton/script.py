@@ -160,8 +160,15 @@ def get_or_create_level(doc, elevation, name):
     return level
 
 
-def create_floor_plan(doc, level, view_depth_mm=100):
-    """Создать план этажа для уровня."""
+def get_or_create_floor_plan(doc, level, plan_name, view_depth_mm=100):
+    """Получить существующий или создать новый план этажа для уровня."""
+    # Ищем существующий план с таким именем
+    views = FilteredElementCollector(doc).OfClass(ViewPlan).ToElements()
+    for v in views:
+        if v.Name == plan_name:
+            return v
+
+    # Создаём новый план
     view_types = FilteredElementCollector(doc).OfClass(ViewFamilyType).ToElements()
     floor_plan_type = None
 
@@ -184,6 +191,7 @@ def create_floor_plan(doc, level, view_depth_mm=100):
     view_range.SetOffset(PlanViewPlane.TopClipPlane, depth_feet * 2)
 
     plan.SetViewRange(view_range)
+    plan.Name = plan_name
 
     return plan
 
@@ -756,9 +764,8 @@ def main():
 
                 try:
                     level = get_or_create_level(doc, m_to_feet(center_z), level_name)
-                    plan = create_floor_plan(doc, level, layer_height_mm)
+                    plan = get_or_create_floor_plan(doc, level, level_name, layer_height_mm)
                     if plan:
-                        plan.Name = level_name
                         created_plans.append(plan)
                         log.append("+ {}".format(level_name))
                 except Exception as e:
@@ -778,6 +785,7 @@ def main():
                             colored += 1
                         except Exception as e:
                             log.append("  Ошибка {}: {}".format(ds.Id, str(e)))
+                            continue
                     log.append("+ {} ({} элементов)".format(plan.Name, colored))
 
         t.Commit()
