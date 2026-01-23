@@ -36,6 +36,7 @@ if LIB_DIR not in sys.path:
 from cpsk_notify import show_error, show_warning, show_info, show_success
 from cpsk_auth import require_auth
 from cpsk_config import require_environment
+from cpsk_categories import ALL_TYPE_CATEGORIES
 
 # Проверка авторизации
 if not require_auth():
@@ -46,7 +47,7 @@ if not require_environment():
     sys.exit()
 
 from Autodesk.Revit.DB import (
-    Transaction, FilteredElementCollector, BuiltInCategory,
+    Transaction, FilteredElementCollector,
     StorageType, Element
 )
 
@@ -62,16 +63,20 @@ def parse_ids_for_values(ids_path):
     Возвращает dict: param_name -> {allowed_values: [...], instructions: str}
     """
     result = {}
+    content = None
 
-    try:
-        with codecs.open(ids_path, 'r', 'utf-8') as f:
-            content = f.read()
-    except:
+    # Пробуем разные кодировки
+    for encoding in ['utf-8', 'utf-8-sig']:
         try:
-            with codecs.open(ids_path, 'r', 'utf-8-sig') as f:
+            with codecs.open(ids_path, 'r', encoding) as f:
                 content = f.read()
-        except:
-            return result
+            break
+        except Exception:
+            # Пробуем следующую кодировку
+            continue
+
+    if content is None:
+        return result
 
     property_pattern = r'<property([^>]*)>(.*?)</property>'
     properties = re.findall(property_pattern, content, re.DOTALL)
@@ -115,38 +120,26 @@ def get_all_types(doc):
     """Получить все типы из документа."""
     types = []
 
-    categories = [
-        BuiltInCategory.OST_Walls,
-        BuiltInCategory.OST_Floors,
-        BuiltInCategory.OST_StructuralColumns,
-        BuiltInCategory.OST_StructuralFraming,
-        BuiltInCategory.OST_StructuralFoundation,
-        BuiltInCategory.OST_Rebar,
-        BuiltInCategory.OST_Stairs,
-        BuiltInCategory.OST_StairsRailing,
-        BuiltInCategory.OST_Roofs,
-        BuiltInCategory.OST_GenericModel,
-        BuiltInCategory.OST_Ceilings,
-    ]
-
-    for cat in categories:
+    for cat in ALL_TYPE_CATEGORIES:
         try:
             collector = FilteredElementCollector(doc).OfCategory(cat).WhereElementIsElementType()
             for t in collector:
                 try:
                     name = Element.Name.GetValue(t)
                     types.append((name, t))
-                except:
-                    pass
-        except:
-            pass
+                except Exception:
+                    # Пропускаем типы с ошибкой получения имени
+                    continue
+        except Exception:
+            # Категория может отсутствовать в проекте
+            continue
 
     types.sort(key=lambda x: x[0].lower())
     return types
 
 
 def get_type_params(elem_type):
-    """Получить редактируемые параметры типа."""
+    """Получить только общие параметры типа (Shared Parameters)."""
     params = []
     if elem_type is None:
         return params
@@ -154,8 +147,18 @@ def get_type_params(elem_type):
     for p in elem_type.Parameters:
         if p.IsReadOnly:
             continue
+
+        # Оставляем только общие параметры (Shared Parameters)
+        if not p.IsShared:
+            continue
+
+        # Пропускаем ElementId - это ссылки на другие элементы
+        if p.StorageType == StorageType.ElementId:
+            continue
+
         try:
             name = p.Definition.Name
+
             current_value = ""
             if p.HasValue:
                 if p.StorageType == StorageType.String:
@@ -165,8 +168,9 @@ def get_type_params(elem_type):
                 elif p.StorageType == StorageType.Double:
                     current_value = str(round(p.AsDouble(), 4))
             params.append((name, p, current_value))
-        except:
-            pass
+        except Exception:
+            # Пропускаем параметры с ошибкой чтения
+            continue
 
     params.sort(key=lambda x: x[0].lower())
     return params
@@ -196,7 +200,7 @@ class FillTypeParamsForm(Form):
         """Настройка формы."""
         self.Text = "Заполнение параметров типа из IDS"
         self.Width = 850
-        self.Height = 700
+        self.Height = 750
         self.StartPosition = FormStartPosition.CenterScreen
         self.FormBorderStyle = FormBorderStyle.FixedDialog
         self.MaximizeBox = False
@@ -230,7 +234,7 @@ class FillTypeParamsForm(Form):
         grp_type = GroupBox()
         grp_type.Text = "1. Выберите тип"
         grp_type.Location = Point(15, y)
-        grp_type.Size = Size(810, 130)
+        grp_type.Size = Size(810, 180)
 
         lbl_search_type = Label()
         lbl_search_type.Text = "Поиск типа:"
@@ -246,17 +250,17 @@ class FillTypeParamsForm(Form):
 
         self.lst_types = ListBox()
         self.lst_types.Location = Point(10, 50)
-        self.lst_types.Size = Size(790, 70)
+        self.lst_types.Size = Size(790, 120)
         self.lst_types.SelectedIndexChanged += self.on_type_selected
         grp_type.Controls.Add(self.lst_types)
 
         self.Controls.Add(grp_type)
 
-        y += 140
+        y += 190
 
         # === Параметры Revit ===
         grp_revit = GroupBox()
-        grp_revit.Text = "2. Параметр Revit (параметры выбранного типа)"
+        grp_revit.Text = "2. Общий параметр (Shared Parameters)"
         grp_revit.Location = Point(15, y)
         grp_revit.Size = Size(400, 200)
 

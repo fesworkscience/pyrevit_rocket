@@ -61,16 +61,20 @@ def parse_ids_for_values(ids_path):
     Возвращает dict: param_name -> {allowed_values: [...], instructions: str}
     """
     result = {}
+    content = None
 
-    try:
-        with codecs.open(ids_path, 'r', 'utf-8') as f:
-            content = f.read()
-    except:
+    # Пробуем разные кодировки
+    for encoding in ['utf-8', 'utf-8-sig']:
         try:
-            with codecs.open(ids_path, 'r', 'utf-8-sig') as f:
+            with codecs.open(ids_path, 'r', encoding) as f:
                 content = f.read()
-        except:
-            return result
+            break
+        except Exception:
+            # Пробуем следующую кодировку
+            continue
+
+    if content is None:
+        return result
 
     property_pattern = r'<property([^>]*)>(.*?)</property>'
     properties = re.findall(property_pattern, content, re.DOTALL)
@@ -118,28 +122,35 @@ def get_selected_elements():
 
 
 def get_common_params(elements):
-    """Получить общие параметры для всех элементов (только редактируемые)."""
+    """Получить общие параметры для всех элементов (только Shared Parameters)."""
     if not elements:
         return []
 
-    # Собрать параметры первого элемента
+    # Собрать общие параметры первого элемента
     first_params = {}
     for p in elements[0].Parameters:
         if p.IsReadOnly:
             continue
+        # Оставляем только общие параметры (Shared Parameters)
+        if not p.IsShared:
+            continue
+        # Пропускаем ElementId - это ссылки на другие элементы
+        if p.StorageType == StorageType.ElementId:
+            continue
         try:
             name = p.Definition.Name
             first_params[name] = p.StorageType
-        except:
-            pass
+        except Exception:
+            # Пропускаем параметры с ошибкой чтения
+            continue
 
     # Проверить что параметры есть во всех элементах
     common = []
-    for name, storage_type in first_params.items():
+    for name in first_params.keys():
         is_common = True
         for elem in elements[1:]:
             param = elem.LookupParameter(name)
-            if param is None or param.IsReadOnly:
+            if param is None or param.IsReadOnly or not param.IsShared:
                 is_common = False
                 break
         if is_common:
@@ -211,7 +222,7 @@ class FillInstanceParamsForm(Form):
 
         # === Параметры Revit ===
         grp_revit = GroupBox()
-        grp_revit.Text = "1. Параметр Revit (общий для выбранных элементов)"
+        grp_revit.Text = "1. Общий параметр (Shared Parameters)"
         grp_revit.Location = Point(15, y)
         grp_revit.Size = Size(370, 220)
 
@@ -535,7 +546,7 @@ if __name__ == "__main__":
                 selection = uidoc.Selection
                 refs = selection.PickObjects(ObjectType.Element, "Выберите элементы")
                 elements = [doc.GetElement(ref.ElementId) for ref in refs]
-            except:
+            except Exception:
                 # Пользователь отменил выбор
                 elements = []
 
