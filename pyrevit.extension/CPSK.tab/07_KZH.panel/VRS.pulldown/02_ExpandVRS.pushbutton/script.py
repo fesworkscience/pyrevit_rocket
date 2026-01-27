@@ -278,18 +278,16 @@ def get_column_total(schedule, column_index):
             return None
 
         for row in range(rows):
-            try:
-                cell_text = schedule.GetCellText(SectionType.Body, row, column_index)
-                if cell_text:
-                    cell_text = cell_text.strip().replace(',', '.').replace(' ', '')
-                    if cell_text and cell_text != '-' and cell_text != '':
-                        try:
-                            value = float(cell_text)
-                            total += value
-                        except ValueError:
-                            pass
-            except:
-                pass
+            cell_text = schedule.GetCellText(SectionType.Body, row, column_index)
+            if cell_text:
+                cell_text = cell_text.strip().replace(',', '.').replace(' ', '')
+                if cell_text and cell_text != '-' and cell_text != '':
+                    try:
+                        value = float(cell_text)
+                        total += value
+                    except ValueError:
+                        # Нечисловое значение - пропускаем (ожидаемо для текстовых ячеек)
+                        continue
 
         return total
     except Exception as ex:

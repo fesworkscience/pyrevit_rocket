@@ -298,19 +298,18 @@ def get_column_total(schedule, column_index):
             return None
 
         for row in range(rows):
-            try:
-                cell_text = schedule.GetCellText(SectionType.Body, row, column_index)
-                if cell_text:
-                    # Убираем пробелы и заменяем запятую на точку
-                    cell_text = cell_text.strip().replace(',', '.').replace(' ', '')
-                    if cell_text and cell_text != '-' and cell_text != '':
-                        try:
-                            value = float(cell_text)
-                            total += value
-                        except ValueError:
-                            pass
-            except:
-                pass
+            cell_text = schedule.GetCellText(SectionType.Body, row, column_index)
+            if cell_text:
+                # Убираем пробелы и заменяем запятую на точку
+                cell_text = cell_text.strip().replace(',', '.').replace(' ', '')
+                if cell_text and cell_text != '-' and cell_text != '':
+                    # Проверяем, что строка похожа на число
+                    try:
+                        value = float(cell_text)
+                        total += value
+                    except ValueError:
+                        # Нечисловое значение - пропускаем (ожидаемо для текстовых ячеек)
+                        continue
 
         return total
     except Exception as ex:
@@ -353,7 +352,8 @@ def analyze_schedule_columns(schedule):
             visible_column_index += 1
 
     except Exception as ex:
-        pass
+        # Ошибка анализа - возвращаем пустой список
+        return []
 
     return results
 
@@ -373,11 +373,8 @@ def collapse_schedule(schedule):
 
         for field_index, heading, is_empty, field in columns:
             if is_empty:
-                try:
-                    field.IsHidden = True
-                    hidden_count += 1
-                except:
-                    pass
+                field.IsHidden = True
+                hidden_count += 1
 
         return hidden_count, len(columns), None
     except Exception as ex:
