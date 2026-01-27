@@ -199,11 +199,15 @@ jobs:
               $opts = [System.Text.RegularExpressions.RegexOptions]::Singleline
               $prBody = [regex]::Replace($prBody, '## Связанные Issues.*?((?=##)|$)', '', $opts)
               $prBody = [regex]::Replace($prBody, '## Чеклист.*?((?=##)|$)', '', $opts)
-              $prBody = [regex]::Replace($prBody, '## Скриншоты.*', '', $opts)
+              $prBody = [regex]::Replace($prBody, '## Скриншоты.*?((?=##)|$)', '', $opts)
+              $prBody = [regex]::Replace($prBody, '## Описание\s*\r?\n\s*(Краткое описание изменений\.?)?\s*', '', $opts)
+              $prBody = [regex]::Replace($prBody, '## Тип изменения.*?((?=##)|$)', '', $opts)
               $prBody = [regex]::Replace($prBody, 'Closes #\(номер issue\)', '', $opts)
               $prBody = [regex]::Replace($prBody, 'Если применимо.*UI\.?', '', $opts)
               $prBody = [regex]::Replace($prBody, '<img[^>]*>', '', $opts)
               $prBody = [regex]::Replace($prBody, 'Краткое описание изменений\.?', '', $opts)
+              # Remove multiple empty lines
+              $prBody = [regex]::Replace($prBody, '(\r?\n){3,}', "`n`n")
               $prBody = $prBody.Trim()
               Write-Host "Using PR description"
             } catch {
