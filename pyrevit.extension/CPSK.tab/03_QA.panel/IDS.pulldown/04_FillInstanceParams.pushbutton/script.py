@@ -47,6 +47,7 @@ if not require_environment():
 
 from Autodesk.Revit.DB import Transaction, StorageType
 from Autodesk.Revit.UI.Selection import ObjectType
+from Autodesk.Revit.Exceptions import OperationCanceledException
 
 doc = revit.doc
 uidoc = revit.uidoc
@@ -509,7 +510,9 @@ class FillInstanceParamsForm(Form):
                             param.Set(0.0)
                         updated += 1
                 except Exception as e:
+                    # Ошибка установки параметра - сохраняем и продолжаем
                     errors.append(str(e))
+                    continue
 
             t.Commit()
 
@@ -546,8 +549,8 @@ if __name__ == "__main__":
                 selection = uidoc.Selection
                 refs = selection.PickObjects(ObjectType.Element, "Выберите элементы")
                 elements = [doc.GetElement(ref.ElementId) for ref in refs]
-            except Exception:
-                # Пользователь отменил выбор
+            except OperationCanceledException:
+                # Пользователь отменил выбор (ESC) - штатный выход
                 elements = []
 
     if not elements:

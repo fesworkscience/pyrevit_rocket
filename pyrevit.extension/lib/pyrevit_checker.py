@@ -390,10 +390,14 @@ class PyRevitChecker:
                 filename = os.path.basename(self.current_file) if self.current_file else ""
                 if filename != 'script.py' and 'print(' in line:
                     has_notify_in_block = True
-                # return, raise, continue - допустимые варианты
-                # (return/raise - возвращают/перебрасывают, continue - пропуск в цикле)
+                # return, raise, continue, break - допустимые варианты
+                # (return/raise - возвращают/перебрасывают, continue/break - контроль цикла)
+                # присваивание (var = ...) - тоже допустимо (установка значения по умолчанию)
                 # pass - НЕ допустим (молчаливый пропуск без контроля потока)
-                if re.match(r'\s*(return|raise|continue)\b', line):
+                if re.match(r'\s*(return|raise|continue|break)\b', line):
+                    has_notify_in_block = True
+                # Присваивание переменной - допустимая обработка (default value)
+                if re.match(r'\s*\w+\s*=\s*.+', line) and 'except' not in line:
                     has_notify_in_block = True
 
         # Проверяем последний except если файл закончился
@@ -648,10 +652,11 @@ class PyRevitChecker:
             'DisplayUnitType': 'Deprecated в Revit 2022+. Используйте ForgeTypeId/UnitTypeId.',
         }
 
-        # Определяем строки внутри try блоков (для fallback импортов)
+        # Определяем строки внутри try/except блоков (для fallback импортов)
         in_try_block = False
-        try_indent = 0
-        try_lines = set()
+        in_except_block = False
+        block_indent = 0
+        fallback_lines = set()
 
         for i, line in enumerate(lines, 1):
             stripped = line.lstrip()
@@ -659,16 +664,22 @@ class PyRevitChecker:
 
             if stripped.startswith('try:'):
                 in_try_block = True
-                try_indent = current_indent
-            elif in_try_block:
-                if stripped and current_indent <= try_indent and not stripped.startswith('#'):
+                in_except_block = False
+                block_indent = current_indent
+            elif stripped.startswith('except'):
+                in_try_block = False
+                in_except_block = True
+                block_indent = current_indent
+            elif in_try_block or in_except_block:
+                if stripped and current_indent <= block_indent and not stripped.startswith('#'):
                     in_try_block = False
+                    in_except_block = False
                 else:
-                    try_lines.add(i)
+                    fallback_lines.add(i)
 
         for i, line in enumerate(lines, 1):
-            # Пропускаем строки внутри try блоков (fallback импорты)
-            if i in try_lines:
+            # Пропускаем строки внутри try/except блоков (fallback импорты)
+            if i in fallback_lines:
                 continue
 
             code_part = line.split('#')[0]

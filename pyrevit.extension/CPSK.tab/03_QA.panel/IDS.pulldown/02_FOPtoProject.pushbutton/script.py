@@ -126,16 +126,15 @@ def get_forge_type_id(g):
     try:
         # Revit 2024+ ForgeTypeId имеет свойство TypeId
         return g.TypeId
-    except:
-        pass
-    try:
-        # Или можно попробовать repr
-        s = repr(g)
-        if "ForgeTypeId" in s:
-            return s
-        return str(g)
-    except:
-        return str(id(g))
+    except Exception:
+        # TypeId не доступен - пробуем repr
+        try:
+            s = repr(g)
+            if "ForgeTypeId" in s:
+                return s
+            return str(g)
+        except Exception:
+            return str(id(g))
 
 
 def fix_label(label):
@@ -165,9 +164,11 @@ def get_all_parameter_groups():
                 continue
             seen_ids.add(gid)
 
+            # Получение label
             try:
                 label = LabelUtils.GetLabelForGroup(g)
-            except:
+            except Exception:
+                # Label не доступен - будет сгенерирован ниже
                 label = ""
 
             # Если label пустой - генерируем читаемое имя из ID
@@ -186,9 +187,9 @@ def get_all_parameter_groups():
             # Сортировать по имени (регистронезависимо)
             groups.sort(key=lambda x: x[0].lower() if x[0] else "")
             return groups
-    except Exception as e:
-        # Логируем ошибку для отладки
-        pass
+    except Exception:
+        # Revit 2024+ API не доступен - пробуем старый API
+        groups = []  # Сбрасываем для следующей попытки
 
     # Revit 2023 и раньше - используем BuiltInParameterGroup enum
     try:
@@ -211,14 +212,16 @@ def get_all_parameter_groups():
                 try:
                     if int(g) == -1:
                         continue
-                except:
-                    pass
+                except (ValueError, TypeError):
+                    # Не конвертируется в int - это нормально, продолжаем
+                    gid = str(g)  # Уже установлен выше, но нужна операция
 
                 seen_ids.add(gid)
 
                 try:
                     label = LU.GetLabelFor(g)
-                except:
+                except Exception:
+                    # Label не доступен для этой группы
                     label = ""
 
                 # Если label пустой - используем имя enum
@@ -231,24 +234,23 @@ def get_all_parameter_groups():
                 # Сортировать по имени
                 groups.sort(key=lambda x: x[0])
                 return groups
-    except:
-        pass
+    except Exception:
+        # Старый API тоже не доступен - используем fallback
+        groups = []  # Сбрасываем для fallback
 
     # Fallback - базовый список (используем глобальный импорт)
     # BuiltInParameterGroup уже импортирован в начале файла (или GroupTypeId для 2024+)
     fallback = []
-    try:
-        fallback.append(("Данные", BuiltInParameterGroup.PG_DATA))
-    except:
-        pass
-    try:
-        fallback.append(("Идентификация", BuiltInParameterGroup.PG_IDENTITY_DATA))
-    except:
-        pass
-    try:
-        fallback.append(("Прочее", BuiltInParameterGroup.PG_GENERAL))
-    except:
-        pass
+    # Пробуем добавить базовые группы (могут отсутствовать в разных версиях Revit)
+    pg_data = getattr(BuiltInParameterGroup, 'PG_DATA', None)
+    if pg_data is not None:
+        fallback.append(("Данные", pg_data))
+    pg_identity = getattr(BuiltInParameterGroup, 'PG_IDENTITY_DATA', None)
+    if pg_identity is not None:
+        fallback.append(("Идентификация", pg_identity))
+    pg_general = getattr(BuiltInParameterGroup, 'PG_GENERAL', None)
+    if pg_general is not None:
+        fallback.append(("Прочее", pg_general))
 
     if fallback:
         return fallback
@@ -287,12 +289,13 @@ def parse_ids_simple(ids_path):
     try:
         with codecs.open(ids_path, 'r', 'utf-8') as f:
             content = f.read()
-    except:
+    except (IOError, UnicodeDecodeError):
         # Попробовать другие кодировки
         try:
             with codecs.open(ids_path, 'r', 'utf-8-sig') as f:
                 content = f.read()
-        except:
+        except (IOError, UnicodeDecodeError):
+            # Не удалось прочитать файл ни в одной кодировке
             return result
 
     # Найти все specification блоки
@@ -1012,8 +1015,10 @@ class FOPtoProjectForm(Form):
                         failed.append(cat_name)
                         Logger.debug(SCRIPT_NAME, "    {} НЕ НАЙДЕНА".format(cat_name))
                 except Exception as e:
+                    # Ошибка категории - добавляем в failed и продолжаем
                     failed.append(cat_name)
                     Logger.debug(SCRIPT_NAME, "    {} ОШИБКА: {}".format(cat_name, str(e)))
+                    continue
             return cat_set, failed
 
         Logger.info(SCRIPT_NAME, "Каждый параметр будет привязан к своим категориям из IDS")
