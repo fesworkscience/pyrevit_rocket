@@ -9,6 +9,8 @@ from System import IO
 from System import Text
 from System.Net import HttpWebRequest, WebException
 
+from cpsk_notify import show_warning
+
 API_BASE = "https://api-cpsk-superapp.gip.su/api/gip-vision/v1"
 
 
@@ -28,22 +30,37 @@ def _json_or_raw(text):
         return None, text
 
 
-def _build_multipart_body(file_path, field_name):
+def _build_multipart_body(file_path, field_name, fields=None):
     boundary = "---------------------------gipvision{0}".format(str(abs(hash(file_path))))
     file_name = os.path.basename(file_path)
     file_bytes = IO.File.ReadAllBytes(file_path)
 
-    preamble = (
+    body = IO.MemoryStream()
+
+    if fields:
+        for key in sorted(fields.keys()):
+            value = fields[key]
+            if value is None:
+                continue
+
+            part = (
+                "--{0}\r\n"
+                "Content-Disposition: form-data; name=\"{1}\"\r\n\r\n"
+                "{2}\r\n"
+            ).format(boundary, key, str(value))
+            part_bytes = Text.Encoding.UTF8.GetBytes(part)
+            body.Write(part_bytes, 0, part_bytes.Length)
+
+    file_preamble = (
         "--{0}\r\n"
         "Content-Disposition: form-data; name=\"{1}\"; filename=\"{2}\"\r\n"
         "Content-Type: application/octet-stream\r\n\r\n"
     ).format(boundary, field_name, file_name)
     ending = "\r\n--{0}--\r\n".format(boundary)
 
-    pre_bytes = Text.Encoding.UTF8.GetBytes(preamble)
+    pre_bytes = Text.Encoding.UTF8.GetBytes(file_preamble)
     end_bytes = Text.Encoding.UTF8.GetBytes(ending)
 
-    body = IO.MemoryStream()
     body.Write(pre_bytes, 0, pre_bytes.Length)
     body.Write(file_bytes, 0, file_bytes.Length)
     body.Write(end_bytes, 0, end_bytes.Length)
@@ -54,10 +71,8 @@ def _build_multipart_body(file_path, field_name):
     return boundary, content
 
 
-def create_session_by_plane(model_file_path, api_key):
-    url = API_BASE + "/session/by_plane/"
-    boundary, body = _build_multipart_body(model_file_path, "model_file")
-
+def _send_multipart_request(url, model_file_path, api_key, fields=None):
+    boundary, body = _build_multipart_body(model_file_path, "model_file", fields)
     req = HttpWebRequest.Create(url)
     req.Method = "POST"
     req.ContentType = "multipart/form-data; boundary={0}".format(boundary)
@@ -74,11 +89,12 @@ def create_session_by_plane(model_file_path, api_key):
     try:
         resp = req.GetResponse()
         text = _read_response_text(resp)
+        status = int(resp.StatusCode)
         resp.Close()
         data, raw = _json_or_raw(text)
         return {
             "ok": True,
-            "status": 201,
+            "status": status,
             "data": data,
             "raw": raw
         }
@@ -90,8 +106,13 @@ def create_session_by_plane(model_file_path, api_key):
                 status = int(ex.Response.StatusCode)
                 text = _read_response_text(ex.Response)
                 ex.Response.Close()
-            except Exception:
-                pass
+            except Exception as read_ex:
+                show_warning(
+                    "GIP Vision",
+                    "Не удалось прочитать текст ошибки ответа сервера GIP Vision.",
+                    details=str(read_ex),
+                    blocking=False
+                )
         data, raw = _json_or_raw(text)
         return {
             "ok": False,
@@ -100,6 +121,32 @@ def create_session_by_plane(model_file_path, api_key):
             "raw": raw,
             "error": str(ex)
         }
+
+
+def create_session_by_plane(model_file_path, api_key):
+    return _send_multipart_request(
+        API_BASE + "/session/by_plane/",
+        model_file_path,
+        api_key
+    )
+
+
+def create_session_by_refimage(model_file_path, api_key, point_of_view_fields):
+    return _send_multipart_request(
+        API_BASE + "/session/by_refimage/",
+        model_file_path,
+        api_key,
+        point_of_view_fields
+    )
+
+
+def create_session_by_scan(model_file_path, api_key, alignment_fields):
+    return _send_multipart_request(
+        API_BASE + "/session/by_scan/",
+        model_file_path,
+        api_key,
+        alignment_fields
+    )
 
 
 def resolve_onetime_code(onetime_code, api_key):
@@ -139,8 +186,13 @@ def resolve_onetime_code(onetime_code, api_key):
                 status = int(ex.Response.StatusCode)
                 text = _read_response_text(ex.Response)
                 ex.Response.Close()
-            except Exception:
-                pass
+            except Exception as read_ex:
+                show_warning(
+                    "GIP Vision",
+                    "Не удалось прочитать текст ошибки ответа сервера GIP Vision.",
+                    details=str(read_ex),
+                    blocking=False
+                )
         data, raw = _json_or_raw(text)
         return {
             "ok": False,

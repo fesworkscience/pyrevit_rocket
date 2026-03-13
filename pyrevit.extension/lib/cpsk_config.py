@@ -155,6 +155,11 @@ DEFAULT_SETTINGS = {
         "offset_mm": 50,
         "min_length_mm": 100,
         "merge_tolerance_mm": 50
+    },
+    "gip_vision": {
+        "export_folder": "",
+        "file_prefix": "gipvision_export_current_view",
+        "scenario": "by_plane"
     }
 }
 
