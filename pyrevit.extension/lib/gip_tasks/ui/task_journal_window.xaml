@@ -1,0 +1,401 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Журнал заданий" Height="760" Width="1240"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResize"
+        MinWidth="1080" MinHeight="660"
+        FontFamily="Segoe UI"
+        FontSize="13"
+        Language="ru-RU">
+  <Window.Resources>
+    <SolidColorBrush x:Key="WindowBrush" Color="#F7F8FC"/>
+    <SolidColorBrush x:Key="CardBrush" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="BorderBrushSoft" Color="#E2E5F0"/>
+    <SolidColorBrush x:Key="TextBrushMain" Color="#1F2430"/>
+    <SolidColorBrush x:Key="TextBrushMuted" Color="#6B7280"/>
+    <SolidColorBrush x:Key="PrimaryBrush" Color="#3136FF"/>
+    <SolidColorBrush x:Key="AccentBrush" Color="#660FD1"/>
+    <SolidColorBrush x:Key="SelectedRowBrush" Color="#EEF2FF"/>
+
+    <Style x:Key="FieldLabel" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Foreground" Value="{StaticResource TextBrushMain}"/>
+      <Setter Property="Margin" Value="0,0,0,5"/>
+    </Style>
+
+    <Style x:Key="MutedText" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource TextBrushMuted}"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+
+    <Style x:Key="BaseButtonStyle" TargetType="Button">
+      <Setter Property="MinHeight" Value="32"/>
+      <Setter Property="Padding" Value="12,0"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="7"
+                    Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                RecognizesAccessKey="True"/>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="PrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButtonStyle}">
+      <Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+      <Setter Property="Foreground" Value="White"/>
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Background" Value="#5331FF"/>
+          <Setter Property="BorderBrush" Value="#5331FF"/>
+        </Trigger>
+        <Trigger Property="IsEnabled" Value="False">
+          <Setter Property="Background" Value="#EEF0F5"/>
+          <Setter Property="BorderBrush" Value="#E5E7EB"/>
+          <Setter Property="Foreground" Value="#9CA3AF"/>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style x:Key="SecondaryButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButtonStyle}">
+      <Setter Property="Background" Value="{StaticResource CardBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}"/>
+      <Setter Property="Foreground" Value="{StaticResource TextBrushMain}"/>
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Background" Value="#F7F8FC"/>
+          <Setter Property="BorderBrush" Value="#D6DAE8"/>
+        </Trigger>
+        <Trigger Property="IsEnabled" Value="False">
+          <Setter Property="Background" Value="#F5F6FA"/>
+          <Setter Property="Foreground" Value="#A0A7B5"/>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style x:Key="OutlineAccentButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButtonStyle}">
+      <Setter Property="Background" Value="{StaticResource CardBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+      <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Background" Value="#F4F0FF"/>
+          <Setter Property="BorderBrush" Value="#5331FF"/>
+        </Trigger>
+        <Trigger Property="IsEnabled" Value="False">
+          <Setter Property="Background" Value="#F5F6FA"/>
+          <Setter Property="BorderBrush" Value="#E5E7EB"/>
+          <Setter Property="Foreground" Value="#A0A7B5"/>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style x:Key="TabButtonStyle" TargetType="Button">
+      <Setter Property="Height" Value="40"/>
+      <Setter Property="Padding" Value="14,0"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+      <Setter Property="Foreground" Value="{StaticResource TextBrushMuted}"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="6,6,0,0"
+                    Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                RecognizesAccessKey="True"/>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Background" Value="#F7F8FC"/>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style TargetType="DataGridColumnHeader">
+      <Setter Property="Background" Value="#F7F8FC"/>
+      <Setter Property="Foreground" Value="{StaticResource TextBrushMuted}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}"/>
+      <Setter Property="BorderThickness" Value="0,0,0,1"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Padding" Value="10,8"/>
+      <Setter Property="MinHeight" Value="34"/>
+    </Style>
+
+    <Style TargetType="DataGridRow">
+      <Setter Property="MinHeight" Value="40"/>
+      <Setter Property="Background" Value="{StaticResource CardBrush}"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Style.Triggers>
+        <Trigger Property="IsSelected" Value="True">
+          <Setter Property="Background" Value="{StaticResource SelectedRowBrush}"/>
+          <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+          <Setter Property="BorderThickness" Value="3,0,0,0"/>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+  </Window.Resources>
+
+  <Grid Background="{StaticResource WindowBrush}">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <Border x:Name="TopPanel" BorderThickness="0,0,0,1" BorderBrush="{StaticResource BorderBrushSoft}" Background="{StaticResource CardBrush}" Padding="18,14">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <StackPanel Grid.Column="0">
+          <TextBlock Text="Журнал заданий" FontSize="22" FontWeight="SemiBold" Foreground="{StaticResource TextBrushMain}"/>
+          <StackPanel Orientation="Horizontal" Margin="0,7,0,0">
+            <Border x:Name="ConnectionDot" Tag="KeepStyle" Width="8" Height="8" CornerRadius="4" Background="#9CA3AF" VerticalAlignment="Center"/>
+            <TextBlock x:Name="ConnectionStatusText" Text="Локальный режим" Margin="7,0,0,0" Foreground="{StaticResource TextBrushMuted}" FontSize="12"/>
+          </StackPanel>
+        </StackPanel>
+
+        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+          <TextBlock Text="Проект:" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{StaticResource TextBrushMuted}"/>
+          <ComboBox x:Name="ProjectCombo" Width="260" Height="30" DisplayMemberPath="display_name" Margin="0,0,8,0" SelectionChanged="project_changed"/>
+          <Button x:Name="CreateProjectButton" Tag="KeepStyle" Style="{StaticResource SecondaryButtonStyle}" Content="Создать проект" Width="124" Height="32" Margin="0,0,8,0" Click="create_project_click"/>
+          <Button Tag="KeepStyle" Style="{StaticResource SecondaryButtonStyle}" Content="Обновить" Width="94" Height="32" Margin="0,0,10,0" Click="refresh_click"/>
+          <Button x:Name="NewTaskButton" Tag="KeepStyle" Style="{StaticResource PrimaryButtonStyle}" Content="+ Новое задание" Width="150" Height="34" Click="new_task_click"/>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <Border Grid.Row="1" Background="{StaticResource CardBrush}" BorderThickness="0,0,0,1" BorderBrush="{StaticResource BorderBrushSoft}" Padding="18,0,18,0">
+      <StackPanel Orientation="Horizontal">
+        <Button x:Name="TabAllButton" Tag="KeepStyle" CommandParameter="all" Style="{StaticResource TabButtonStyle}" Content="Все" Margin="0,0,6,0" Click="quick_tab_click"/>
+        <Button x:Name="TabMineButton" Tag="KeepStyle" CommandParameter="mine" Style="{StaticResource TabButtonStyle}" Content="Мне" Margin="0,0,6,0" Click="quick_tab_click"/>
+        <Button x:Name="TabFromMeButton" Tag="KeepStyle" CommandParameter="from_me" Style="{StaticResource TabButtonStyle}" Content="От меня" Margin="0,0,6,0" Click="quick_tab_click"/>
+        <Button x:Name="TabUrgentButton" Tag="KeepStyle" CommandParameter="urgent" Style="{StaticResource TabButtonStyle}" Content="Срочные" Margin="0,0,6,0" Click="quick_tab_click"/>
+        <Button x:Name="TabOverdueButton" Tag="KeepStyle" CommandParameter="overdue" Style="{StaticResource TabButtonStyle}" Content="Просроченные" Margin="0,0,6,0" Click="quick_tab_click"/>
+        <Button x:Name="TabCancelledButton" Tag="KeepStyle" CommandParameter="cancelled" Style="{StaticResource TabButtonStyle}" Content="Отменённые" Click="quick_tab_click"/>
+      </StackPanel>
+    </Border>
+
+    <Border x:Name="FiltersPanel" Grid.Row="2" BorderThickness="1" BorderBrush="{StaticResource BorderBrushSoft}" Background="{StaticResource CardBrush}" CornerRadius="8" Padding="12" Margin="18,14,18,12">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="2*"/>
+          <ColumnDefinition Width="12"/>
+          <ColumnDefinition Width="1*"/>
+          <ColumnDefinition Width="12"/>
+          <ColumnDefinition Width="1*"/>
+          <ColumnDefinition Width="12"/>
+          <ColumnDefinition Width="1*"/>
+          <ColumnDefinition Width="12"/>
+          <ColumnDefinition Width="1*"/>
+          <ColumnDefinition Width="12"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <StackPanel Grid.Column="0">
+          <TextBlock Text="Поиск" Style="{StaticResource FieldLabel}"/>
+          <Grid>
+            <TextBox x:Name="SearchBox" Height="30" TextChanged="filter_changed"/>
+            <TextBlock x:Name="SearchPlaceholder" Text="Поиск по описанию, уровню, виду..." Margin="9,6,0,0" Foreground="{StaticResource TextBrushMuted}" IsHitTestVisible="False"/>
+          </Grid>
+        </StackPanel>
+        <StackPanel Grid.Column="2">
+          <TextBlock Text="От кого" Style="{StaticResource FieldLabel}"/>
+          <ComboBox x:Name="SenderFilter" Height="30" SelectionChanged="filter_changed"/>
+        </StackPanel>
+        <StackPanel Grid.Column="4">
+          <TextBlock Text="Кому" Style="{StaticResource FieldLabel}"/>
+          <ComboBox x:Name="ReceiverFilter" Height="30" SelectionChanged="filter_changed"/>
+        </StackPanel>
+        <StackPanel Grid.Column="6">
+          <TextBlock Text="Статус" Style="{StaticResource FieldLabel}"/>
+          <ComboBox x:Name="StatusFilter" Height="30" SelectionChanged="filter_changed"/>
+        </StackPanel>
+        <StackPanel Grid.Column="8">
+          <TextBlock Text="Приоритет" Style="{StaticResource FieldLabel}"/>
+          <ComboBox x:Name="PriorityFilter" Height="30" SelectionChanged="filter_changed"/>
+        </StackPanel>
+        <Button Grid.Column="10" Tag="KeepStyle" Style="{StaticResource SecondaryButtonStyle}" Content="Сбросить" Width="100" Height="32" VerticalAlignment="Bottom" Click="reset_filters_click"/>
+      </Grid>
+    </Border>
+
+    <Grid Grid.Row="3" Margin="18,0,18,0">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="2.05*"/>
+        <ColumnDefinition Width="14"/>
+        <ColumnDefinition Width="1.05*"/>
+      </Grid.ColumnDefinitions>
+
+      <Border BorderThickness="1" BorderBrush="{StaticResource BorderBrushSoft}" Background="{StaticResource CardBrush}" CornerRadius="8">
+        <Grid>
+          <DataGrid x:Name="TasksList"
+                    AutoGenerateColumns="False"
+                    CanUserAddRows="False"
+                    CanUserDeleteRows="False"
+                    CanUserResizeRows="False"
+                    HeadersVisibility="Column"
+                    IsReadOnly="True"
+                    GridLinesVisibility="None"
+                    RowHeight="42"
+                    MinRowHeight="40"
+                    AlternationCount="2"
+                    SelectionMode="Single"
+                    SelectionUnit="FullRow"
+                    BorderThickness="0"
+                    ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                    ScrollViewer.VerticalScrollBarVisibility="Auto"
+                    SelectionChanged="task_selected">
+            <DataGrid.Columns>
+              <DataGridTemplateColumn Header="№" Width="82">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <Grid>
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="4"/>
+                        <ColumnDefinition Width="*"/>
+                      </Grid.ColumnDefinitions>
+                      <Border Tag="KeepStyle" Width="4" CornerRadius="2" Background="{Binding RowStripBrush}" Margin="0,6,7,6"/>
+                      <TextBlock Grid.Column="1" Text="{Binding Number}" VerticalAlignment="Center" Foreground="#1F2430"/>
+                    </Grid>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Header="Маршрут" Binding="{Binding Route}" Width="110"/>
+              <DataGridTextColumn Header="Тип" Binding="{Binding Type}" Width="*"/>
+              <DataGridTextColumn Header="Срок" Binding="{Binding DueDate}" Width="104"/>
+              <DataGridTemplateColumn Header="Приоритет" Width="112">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <Border Tag="KeepStyle" Background="{Binding PriorityBackground}" BorderBrush="{Binding PriorityBackground}" BorderThickness="1" CornerRadius="10" Padding="8,3" HorizontalAlignment="Left" VerticalAlignment="Center">
+                      <TextBlock Text="{Binding Priority}" Foreground="{Binding PriorityForeground}" FontSize="12" FontWeight="SemiBold"/>
+                    </Border>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTemplateColumn Header="Статус" Width="112">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <Border Tag="KeepStyle" Background="{Binding StatusBackground}" BorderBrush="{Binding StatusBackground}" BorderThickness="1" CornerRadius="10" Padding="8,3" HorizontalAlignment="Left" VerticalAlignment="Center">
+                      <TextBlock Text="{Binding Status}" Foreground="{Binding StatusForeground}" FontSize="12" FontWeight="SemiBold"/>
+                    </Border>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+            </DataGrid.Columns>
+          </DataGrid>
+
+          <Border x:Name="EmptyStatePanel" BorderThickness="1" BorderBrush="{StaticResource BorderBrushSoft}" Background="#FBFCFF" CornerRadius="8" Padding="24" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" IsHitTestVisible="False">
+            <StackPanel Width="320">
+              <TextBlock Text="По выбранному проекту заданий пока нет" FontSize="15" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap" Foreground="{StaticResource TextBrushMain}"/>
+              <TextBlock Text="Создайте задание через кнопку «+ Новое задание»." Margin="0,8,0,0" TextAlignment="Center" TextWrapping="Wrap" Foreground="{StaticResource TextBrushMuted}"/>
+            </StackPanel>
+          </Border>
+        </Grid>
+      </Border>
+
+      <Border x:Name="TaskCardPanel" Grid.Column="2" BorderThickness="1" BorderBrush="{StaticResource BorderBrushSoft}" Background="{StaticResource CardBrush}" CornerRadius="8" Padding="16" MinWidth="330">
+        <Grid>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+          </Grid.RowDefinitions>
+
+          <Grid Grid.Row="0">
+            <StackPanel x:Name="CardEmptyStatePanel" VerticalAlignment="Center" Margin="12" Visibility="Visible">
+              <TextBlock Text="Выберите задание" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource TextBrushMain}" TextAlignment="Center"/>
+              <TextBlock Text="Выберите строку в журнале, чтобы посмотреть детали задания." Margin="0,8,0,0" Style="{StaticResource MutedText}" TextAlignment="Center"/>
+            </StackPanel>
+
+            <ScrollViewer x:Name="CardDetailsPanel" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+              <StackPanel>
+                <TextBlock x:Name="CardType" Text="Выберите задание" FontSize="19" FontWeight="SemiBold" Foreground="{StaticResource TextBrushMain}" TextWrapping="Wrap"/>
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,14">
+                  <Border x:Name="CardStatusBadge" Tag="KeepStyle" Background="#F2F4F7" CornerRadius="10" Padding="8,3" Margin="0,0,8,0">
+                    <TextBlock x:Name="CardStatusText" Text="" FontSize="12" FontWeight="SemiBold"/>
+                  </Border>
+                  <Border x:Name="CardPriorityBadge" Tag="KeepStyle" Background="#E0EAFF" CornerRadius="10" Padding="8,3">
+                    <TextBlock x:Name="CardPriorityText" Text="" FontSize="12" FontWeight="SemiBold"/>
+                  </Border>
+                </StackPanel>
+
+                <TextBlock x:Name="CardRoute" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource PrimaryBrush}" Margin="0,0,0,8"/>
+                <TextBlock x:Name="CardDueDate" Foreground="{StaticResource TextBrushMain}" Margin="0,0,0,4"/>
+                <TextBlock x:Name="CardProject" Foreground="{StaticResource TextBrushMuted}" TextWrapping="Wrap" Margin="0,0,0,14"/>
+
+                <TextBlock Text="Маркер" FontWeight="SemiBold" FontSize="14" Foreground="{StaticResource TextBrushMain}" Margin="0,0,0,6"/>
+                <Border x:Name="MarkerInfoPanel" BorderThickness="1" BorderBrush="{StaticResource BorderBrushSoft}" Background="#FBFCFF" CornerRadius="6" Padding="10" Margin="0,0,0,14">
+                  <StackPanel>
+                    <TextBlock x:Name="CardView" TextWrapping="Wrap" Foreground="{StaticResource TextBrushMain}" Margin="0,0,0,4"/>
+                    <TextBlock x:Name="CardLevel" TextWrapping="Wrap" Foreground="{StaticResource TextBrushMuted}" Margin="0,0,0,4"/>
+                    <TextBlock x:Name="CardMarker" TextWrapping="Wrap" Foreground="{StaticResource TextBrushMain}" Margin="0,0,0,4"/>
+                    <TextBlock x:Name="CardMarkerParams" TextWrapping="Wrap" Foreground="{StaticResource TextBrushMuted}" FontSize="12"/>
+                  </StackPanel>
+                </Border>
+
+                <TextBlock Text="Описание" FontWeight="SemiBold" FontSize="14" Foreground="{StaticResource TextBrushMain}" Margin="0,0,0,6"/>
+                <Border x:Name="DescriptionPanel" BorderThickness="1" BorderBrush="{StaticResource BorderBrushSoft}" Background="#FBFCFF" CornerRadius="6" Padding="10" Margin="0,0,0,14" MinHeight="86" MaxHeight="160">
+                  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <TextBlock x:Name="CardDescription" TextWrapping="Wrap" Foreground="{StaticResource TextBrushMain}"/>
+                  </ScrollViewer>
+                </Border>
+
+                <TextBlock Text="Комментарий" FontWeight="SemiBold" FontSize="14" Foreground="{StaticResource TextBrushMain}" Margin="0,0,0,6"/>
+                <Grid>
+                  <TextBox x:Name="CommentBox" Height="84" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" TextChanged="comment_text_changed"/>
+                  <TextBlock x:Name="CardCommentPlaceholder" Text="Введите комментарий..." Margin="9,7,9,0" Foreground="{StaticResource TextBrushMuted}" IsHitTestVisible="False"/>
+                </Grid>
+                <Button Tag="KeepStyle" Style="{StaticResource SecondaryButtonStyle}" Content="Сохранить комментарий" Height="32" Margin="0,8,0,0" Click="comment_click"/>
+              </StackPanel>
+            </ScrollViewer>
+          </Grid>
+
+          <Grid x:Name="CardActionsPanel" Grid.Row="1" Margin="0,14,0,0" Visibility="Collapsed">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="8"/>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="8"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Button x:Name="FindMarkerButton" Tag="KeepStyle" Style="{StaticResource OutlineAccentButtonStyle}" Grid.Column="0" Content="Найти маркер" Height="32" Click="find_marker_click"/>
+            <Button x:Name="AcceptButton" Tag="KeepStyle" Style="{StaticResource SecondaryButtonStyle}" Grid.Column="2" Content="Принять" Height="32" Click="accept_click"/>
+            <Button x:Name="CancelTaskButton" Tag="KeepStyle" Style="{StaticResource SecondaryButtonStyle}" Grid.Column="4" Content="Отменить" Height="32" Click="cancel_task_click"/>
+          </Grid>
+        </Grid>
+      </Border>
+    </Grid>
+
+    <Border Grid.Row="4" Background="{StaticResource WindowBrush}" Padding="18,8">
+      <TextBlock x:Name="StatusText" FontSize="12" Foreground="{StaticResource TextBrushMuted}" TextTrimming="CharacterEllipsis"/>
+    </Border>
+  </Grid>
+</Window>

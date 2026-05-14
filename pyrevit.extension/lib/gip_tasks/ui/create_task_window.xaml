@@ -1,0 +1,288 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Передать задание" Height="760" Width="980"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResize"
+        MinWidth="900" MinHeight="660"
+        FontFamily="Segoe UI"
+        FontSize="13"
+        Language="ru-RU">
+  <Window.Resources>
+    <SolidColorBrush x:Key="WindowBrush" Color="#F7F8FC"/>
+    <SolidColorBrush x:Key="CardBrush" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="BorderBrushSoft" Color="#E2E5F0"/>
+    <SolidColorBrush x:Key="TextBrushMain" Color="#1F2430"/>
+    <SolidColorBrush x:Key="TextBrushMuted" Color="#6B7280"/>
+    <SolidColorBrush x:Key="PrimaryBrush" Color="#3136FF"/>
+    <SolidColorBrush x:Key="AccentBrush" Color="#660FD1"/>
+    <SolidColorBrush x:Key="SuccessBg" Color="#ECFDF3"/>
+    <SolidColorBrush x:Key="SuccessText" Color="#027A48"/>
+
+    <Style x:Key="FieldLabel" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Foreground" Value="{StaticResource TextBrushMain}"/>
+      <Setter Property="Margin" Value="0,0,0,5"/>
+    </Style>
+
+    <Style x:Key="MutedText" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource TextBrushMuted}"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+
+    <Style x:Key="BaseButtonStyle" TargetType="Button">
+      <Setter Property="MinHeight" Value="32"/>
+      <Setter Property="Padding" Value="12,0"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="7"
+                    Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                RecognizesAccessKey="True"/>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="PrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButtonStyle}">
+      <Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+      <Setter Property="Foreground" Value="White"/>
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Background" Value="#5331FF"/>
+          <Setter Property="BorderBrush" Value="#5331FF"/>
+        </Trigger>
+        <Trigger Property="IsEnabled" Value="False">
+          <Setter Property="Background" Value="#EEF0F5"/>
+          <Setter Property="BorderBrush" Value="#E5E7EB"/>
+          <Setter Property="Foreground" Value="#9CA3AF"/>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style x:Key="SecondaryButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButtonStyle}">
+      <Setter Property="Background" Value="{StaticResource CardBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}"/>
+      <Setter Property="Foreground" Value="{StaticResource TextBrushMain}"/>
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Background" Value="#F7F8FC"/>
+          <Setter Property="BorderBrush" Value="#D6DAE8"/>
+        </Trigger>
+        <Trigger Property="IsEnabled" Value="False">
+          <Setter Property="Background" Value="#F5F6FA"/>
+          <Setter Property="Foreground" Value="#A0A7B5"/>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style x:Key="ChipButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButtonStyle}">
+      <Setter Property="MinHeight" Value="28"/>
+      <Setter Property="Padding" Value="10,0"/>
+      <Setter Property="Background" Value="{StaticResource CardBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}"/>
+      <Setter Property="Foreground" Value="{StaticResource TextBrushMain}"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Background" Value="#F4F5FF"/>
+          <Setter Property="BorderBrush" Value="#D6DAE8"/>
+        </Trigger>
+        <Trigger Property="IsEnabled" Value="False">
+          <Setter Property="Background" Value="#F5F6FA"/>
+          <Setter Property="Foreground" Value="#A0A7B5"/>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+  </Window.Resources>
+
+  <Grid Background="{StaticResource WindowBrush}">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <Border x:Name="TopPanel" BorderThickness="0,0,0,1" BorderBrush="{StaticResource BorderBrushSoft}" Background="{StaticResource CardBrush}" Padding="18,14">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <StackPanel Grid.Column="0">
+          <TextBlock Text="Передать задание" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource TextBrushMain}"/>
+          <StackPanel Orientation="Horizontal" Margin="0,7,0,0">
+            <Border x:Name="ConnectionDot" Tag="KeepStyle" Width="8" Height="8" CornerRadius="4" Background="#9CA3AF" VerticalAlignment="Center"/>
+            <TextBlock x:Name="ConnectionStatusText" Text="Локальный режим" Margin="7,0,0,0" Foreground="{StaticResource TextBrushMuted}" FontSize="12"/>
+          </StackPanel>
+        </StackPanel>
+
+        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+          <TextBlock Text="Проект:" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{StaticResource TextBrushMuted}"/>
+          <ComboBox x:Name="ProjectCombo" Width="260" Height="30" DisplayMemberPath="display_name" Margin="0,0,8,0" SelectionChanged="project_changed"/>
+          <Button Tag="KeepStyle" Style="{StaticResource SecondaryButtonStyle}" Content="Обновить" Width="94" Height="32" Margin="0,0,8,0" Click="refresh_projects_click"/>
+          <Button x:Name="CreateProjectButton" Tag="KeepStyle" Style="{StaticResource SecondaryButtonStyle}" Content="Создать проект" Width="124" Height="32" Click="create_project_click"/>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Margin="18">
+        <Border x:Name="MarkerBlock" BorderThickness="1" BorderBrush="{StaticResource BorderBrushSoft}" Background="{StaticResource CardBrush}" CornerRadius="8" Padding="16" Margin="0,0,0,14">
+          <StackPanel>
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+              <StackPanel>
+                <TextBlock Text="1. Маркер задания" FontSize="17" FontWeight="SemiBold" Foreground="{StaticResource TextBrushMain}"/>
+                <TextBlock x:Name="MarkerHintText" Text="Выберите семейство CPSK_Маркер задания на активном виде." Margin="0,6,0,0" Style="{StaticResource MutedText}"/>
+              </StackPanel>
+              <Button x:Name="PickMarkerButton" Tag="KeepStyle" Style="{StaticResource PrimaryButtonStyle}" Grid.Column="1" Content="Выбрать маркер" Width="144" Height="34" Click="pick_marker_click"/>
+            </Grid>
+
+            <Border x:Name="MarkerSelectedPanel" Tag="KeepStyle" Visibility="Collapsed" Background="{StaticResource SuccessBg}" BorderBrush="#ABEFC6" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,12,0,10">
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Маркер выбран" FontWeight="SemiBold" Foreground="{StaticResource SuccessText}"/>
+                <TextBlock Text="  •  можно заполнять задание" Foreground="{StaticResource SuccessText}"/>
+              </StackPanel>
+            </Border>
+
+            <Border x:Name="MarkerDetailsPanel" BorderThickness="1" BorderBrush="{StaticResource BorderBrushSoft}" Background="#FBFCFF" CornerRadius="6" Padding="12" Visibility="Collapsed">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="1.15*"/>
+                  <ColumnDefinition Width="1*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Text="Семейство" Style="{StaticResource FieldLabel}"/>
+                <TextBlock x:Name="MarkerNameText" Grid.Column="1" TextWrapping="Wrap" Foreground="{StaticResource TextBrushMain}"/>
+                <TextBlock Text="Тип" Grid.Row="1" Style="{StaticResource FieldLabel}"/>
+                <TextBlock x:Name="MarkerTypeText" Grid.Row="1" Grid.Column="1" TextWrapping="Wrap" Foreground="{StaticResource TextBrushMain}"/>
+                <TextBlock Text="Вид / уровень" Grid.Row="2" Style="{StaticResource FieldLabel}"/>
+                <StackPanel Grid.Row="2" Grid.Column="1">
+                  <TextBlock x:Name="MarkerViewText" TextWrapping="Wrap" Foreground="{StaticResource TextBrushMain}"/>
+                  <TextBlock x:Name="MarkerLevelText" TextWrapping="Wrap" Foreground="{StaticResource TextBrushMuted}" Margin="0,3,0,0"/>
+                </StackPanel>
+                <TextBlock Text="ID" Grid.Row="3" Style="{StaticResource FieldLabel}"/>
+                <TextBlock x:Name="MarkerIdText" Grid.Row="3" Grid.Column="1" Foreground="{StaticResource TextBrushMuted}"/>
+              </Grid>
+            </Border>
+
+            <TextBlock x:Name="MarkerParamsText" Margin="0,10,0,0" Foreground="{StaticResource TextBrushMuted}" FontSize="12" TextWrapping="Wrap"/>
+          </StackPanel>
+        </Border>
+
+        <Border x:Name="TransferBlock" BorderThickness="1" BorderBrush="{StaticResource BorderBrushSoft}" Background="{StaticResource CardBrush}" CornerRadius="8" Padding="16" Margin="0,0,0,14">
+          <StackPanel>
+            <TextBlock Text="2. Кому передаём" FontSize="17" FontWeight="SemiBold" Foreground="{StaticResource TextBrushMain}" Margin="0,0,0,12"/>
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="16"/>
+                <ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <StackPanel Grid.Column="0">
+                <TextBlock Style="{StaticResource FieldLabel}"><Run Text="От кого"/><Run Text=" *" Foreground="#B42318"/></TextBlock>
+                <ComboBox x:Name="SenderDisciplineBox" Height="30" SelectionChanged="field_changed"/>
+              </StackPanel>
+              <StackPanel Grid.Column="2">
+                <TextBlock Style="{StaticResource FieldLabel}"><Run Text="Кому"/><Run Text=" *" Foreground="#B42318"/></TextBlock>
+                <ComboBox x:Name="ReceiverDisciplineBox" Height="30" SelectionChanged="field_changed"/>
+              </StackPanel>
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <Border x:Name="ContentBlock" BorderThickness="1" BorderBrush="{StaticResource BorderBrushSoft}" Background="{StaticResource CardBrush}" CornerRadius="8" Padding="16">
+          <StackPanel>
+            <TextBlock Text="3. Содержание задания" FontSize="17" FontWeight="SemiBold" Foreground="{StaticResource TextBrushMain}" Margin="0,0,0,12"/>
+
+            <Grid Margin="0,0,0,12">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.1*"/>
+                <ColumnDefinition Width="14"/>
+                <ColumnDefinition Width="1*"/>
+                <ColumnDefinition Width="14"/>
+                <ColumnDefinition Width="1.25*"/>
+              </Grid.ColumnDefinitions>
+              <StackPanel Grid.Column="0">
+                <TextBlock Style="{StaticResource FieldLabel}"><Run Text="Тип"/><Run Text=" *" Foreground="#B42318"/></TextBlock>
+                <ComboBox x:Name="TypeBox" Height="30" SelectionChanged="field_changed"/>
+              </StackPanel>
+              <StackPanel Grid.Column="2">
+                <TextBlock Style="{StaticResource FieldLabel}"><Run Text="Приоритет"/><Run Text=" *" Foreground="#B42318"/></TextBlock>
+                <ComboBox x:Name="PriorityBox" Height="30" SelectionChanged="field_changed"/>
+              </StackPanel>
+              <StackPanel Grid.Column="4">
+                <TextBlock Style="{StaticResource FieldLabel}"><Run Text="Срок"/><Run Text=" *" Foreground="#B42318"/></TextBlock>
+                <DatePicker x:Name="DueDatePicker" Height="30" SelectedDateChanged="field_changed" SelectedDateFormat="Short"/>
+              </StackPanel>
+            </Grid>
+
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+              <Button x:Name="TodayButton" Tag="KeepStyle" Style="{StaticResource ChipButtonStyle}" Content="Сегодня" Width="86" Height="28" Margin="0,0,8,0" Click="today_click"/>
+              <Button x:Name="TomorrowButton" Tag="KeepStyle" Style="{StaticResource ChipButtonStyle}" Content="Завтра" Width="86" Height="28" Margin="0,0,8,0" Click="tomorrow_click"/>
+              <Button x:Name="ThreeDaysButton" Tag="KeepStyle" Style="{StaticResource ChipButtonStyle}" Content="+3 дня" Width="86" Height="28" Margin="0,0,8,0" Click="three_days_click"/>
+              <Button x:Name="SevenDaysButton" Tag="KeepStyle" Style="{StaticResource ChipButtonStyle}" Content="+7 дней" Width="86" Height="28" Click="seven_days_click"/>
+            </StackPanel>
+
+            <StackPanel Margin="0,0,0,12">
+              <TextBlock Style="{StaticResource FieldLabel}"><Run Text="Описание задания"/><Run Text=" *" Foreground="#B42318"/></TextBlock>
+              <Grid>
+                <TextBox x:Name="DescriptionBox" Height="112" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" TextChanged="field_changed"/>
+                <TextBlock x:Name="DescriptionPlaceholder" Text="Например: Проверьте раскладку арматуры в плитах перекрытия в зонах примыкания к стенам." Margin="9,7,9,0" Foreground="{StaticResource TextBrushMuted}" TextWrapping="Wrap" IsHitTestVisible="False"/>
+              </Grid>
+            </StackPanel>
+
+            <StackPanel>
+              <TextBlock Text="Комментарий" Style="{StaticResource FieldLabel}"/>
+              <Grid>
+                <TextBox x:Name="CommentBox" Height="74" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" TextChanged="field_changed"/>
+                <TextBlock x:Name="CommentPlaceholder" Text="Введите комментарий (необязательно)..." Margin="9,7,9,0" Foreground="{StaticResource TextBrushMuted}" TextWrapping="Wrap" IsHitTestVisible="False"/>
+              </Grid>
+            </StackPanel>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+
+    <Border x:Name="FooterPanel" Grid.Row="2" BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrushSoft}" Background="{StaticResource CardBrush}" Padding="18,12">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <StackPanel>
+          <TextBlock x:Name="ValidationText" Foreground="{StaticResource TextBrushMuted}" FontSize="12" TextWrapping="Wrap"/>
+          <TextBlock x:Name="StatusText" Foreground="{StaticResource TextBrushMuted}" FontSize="12" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
+          <TextBlock x:Name="ModeBadge" Visibility="Collapsed"/>
+        </StackPanel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+          <Button Tag="KeepStyle" Style="{StaticResource SecondaryButtonStyle}" Content="Отмена" Width="104" Height="32" Margin="0,0,10,0" Click="cancel_click"/>
+          <Button x:Name="SendButton" Tag="KeepStyle" Style="{StaticResource PrimaryButtonStyle}" Content="Передать задание" Width="158" Height="34" Click="send_click"/>
+        </StackPanel>
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

@@ -1,0 +1,26 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Выбор проекта" Height="420" Width="620"
+        WindowStartupLocation="CenterScreen">
+  <Grid Margin="16">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+    <DockPanel Margin="0,0,0,10">
+      <TextBlock Text="Проекты" FontSize="18" FontWeight="Bold" VerticalAlignment="Center"/>
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        <Button Content="Обновить" Width="96" Margin="8,0,0,0" Click="refresh_click"/>
+        <Button x:Name="CreateProjectButton" Content="Создать проект" Width="128" Margin="8,0,0,0" Click="create_project_click"/>
+      </StackPanel>
+    </DockPanel>
+    <ListBox x:Name="ProjectsList" Grid.Row="1" DisplayMemberPath="display_name"/>
+    <TextBlock x:Name="StatusText" Grid.Row="2" Margin="0,10,0,0"/>
+    <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+      <Button Content="Выбрать" Width="100" Margin="0,0,8,0" Click="select_click"/>
+      <Button Content="Отмена" Width="86" Click="cancel_click"/>
+    </StackPanel>
+  </Grid>
+</Window>
